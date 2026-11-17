@@ -3217,6 +3217,15 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 				out["deck"].append(placement * body.verts[i])
 				out["deck_colors"].append(body.colors[i])
 			continue
+		if row[2] == "bicycle_parking":
+			var u := along.normalized() * 0.03
+			var v := across.normalized()
+			for offset: float in [-1.2, -0.4, 0.4, 1.2]:
+				var centre := at + along.normalized() * offset
+				for member: Array in [[-0.3, -0.24, 0.0, 0.8], [0.24, 0.3, 0.0, 0.8], [-0.3, 0.3, 0.74, 0.8]]:
+					_raised_polygon_at(out, "deck", PackedVector2Array([centre - u + v * member[0], centre + u + v * member[0],
+						centre + u + v * member[1], centre - u + v * member[1]]), member[2], member[3], look[3])
+			continue
 		if row[2] == "bench":
 			_bench(out, at, along, across, look[3], row.size() < 5 or bool(row[4]))
 			continue

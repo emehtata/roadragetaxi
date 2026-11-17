@@ -1,0 +1,1558 @@
+{
+  "cache": "bbox_65p00319_25p46437_65p02122_25p50704.json",
+  "targets": [
+    {
+      "row": {
+        "x": 427926.12805443216,
+        "y": 7210586.461985989,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8405381088,
+        "direction_angle": 1.000423232433092,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8405381088,
+        "lat": 65.0112584,
+        "lon": 25.4707959,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427923.6950343922,
+        7210581.187087627
+      ]
+    },
+    {
+      "row": {
+        "x": 427894.4758326339,
+        "y": 7210574.1401229575,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8405381094,
+        "direction_angle": 2.575582000447017,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8405381094,
+        "lat": 65.0111978,
+        "lon": 25.4700637,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427889.0259064546,
+        7210575.270009501
+      ]
+    },
+    {
+      "row": {
+        "x": 427967.15261794644,
+        "y": 7210589.009254452,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 3101861164,
+        "direction_angle": 2.5413150500677064,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 3101861164,
+        "lat": 65.011343,
+        "lon": 25.4717212,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "64",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427967.52869632735,
+        7210589.558639371
+      ]
+    },
+    {
+      "row": {
+        "x": 427818.97154700727,
+        "y": 7210689.644363461,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 3101861171,
+        "direction_angle": 2.5404902134976357,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 3101861171,
+        "lat": 65.012194,
+        "lon": 25.468497,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "28",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427817.8833369702,
+        7210688.05748809
+      ]
+    },
+    {
+      "row": {
+        "x": 428000.00738075655,
+        "y": 7210575.293829392,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 4116246389,
+        "direction_angle": 2.5435946695031246,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 4116246389,
+        "lat": 65.0112094,
+        "lon": 25.4723979,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "188",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427999.05896283267,
+        7210573.901557742
+      ]
+    },
+    {
+      "row": {
+        "x": 427817.42041195,
+        "y": 7210731.164825593,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12866515228,
+        "direction_angle": 0.9963534952950144,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12866515228,
+        "lat": 65.0125782,
+        "lon": 25.4684741,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427817.84161144693,
+        7210730.892202272
+      ]
+    },
+    {
+      "row": {
+        "x": 427787.1093499055,
+        "y": 7210707.360048034,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12866496665,
+        "direction_angle": 2.5540255087856125,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12866496665,
+        "lat": 65.0123609,
+        "lon": 25.4678351,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427787.1425953851,
+        7210707.409963334
+      ]
+    },
+    {
+      "row": {
+        "x": 427959.9489663862,
+        "y": 7210756.481625365,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 1049390703,
+        "direction_angle": 0.9988354451930416,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 1049390703,
+        "lat": 65.0128291,
+        "lon": 25.4715116,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427961.65592940454,
+        7210755.382787503
+      ]
+    },
+    {
+      "row": {
+        "x": 427778.82443684887,
+        "y": 7210712.879710788,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12866493441,
+        "direction_angle": 2.5532761032422546,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12866493441,
+        "lat": 65.0123952,
+        "lon": 25.4676365,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427777.8764308319,
+        7210711.458668583
+      ]
+    },
+    {
+      "row": {
+        "x": 428139.5938593843,
+        "y": 7210714.5875456175,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12802071771,
+        "direction_angle": 0.9857121260564026,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12802071771,
+        "lat": 65.0125071,
+        "lon": 25.4752861,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "safe_loops",
+          "bike_ride": "no",
+          "capacity": "16",
+          "covered": "no",
+          "fee": "no",
+          "indoor": "no",
+          "lit": "yes"
+        }
+      },
+      "raw_m": [
+        428138.65716616955,
+        7210715.208066814
+      ]
+    },
+    {
+      "row": {
+        "x": 428043.191143612,
+        "y": 7210391.586477233,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 5044665974,
+        "direction_angle": 0.9839447082270816,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 5044665974,
+        "lat": 65.0095741,
+        "lon": 25.4734631,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "24",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428044.8565200013,
+        7210390.47899293
+      ]
+    },
+    {
+      "row": {
+        "x": 427889.334118915,
+        "y": 7210340.075400145,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8121037691,
+        "direction_angle": 0.9856292788846952,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8121037691,
+        "lat": 65.0091007,
+        "lon": 25.4701442,
+        "tags": {
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427887.1632220072,
+        7210341.513789937
+      ]
+    },
+    {
+      "row": {
+        "x": 427701.2028808767,
+        "y": 7210908.485434699,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139558459,
+        "direction_angle": 2.5425047467962734,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139558459,
+        "lat": 65.014145,
+        "lon": 25.4659078,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427701.14603128127,
+        7210908.402175021
+      ]
+    },
+    {
+      "row": {
+        "x": 427699.6149384751,
+        "y": 7210917.859705491,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139571530,
+        "direction_angle": 2.542636932960157,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139571530,
+        "lat": 65.0142339,
+        "lon": 25.4658772,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427699.94459253637,
+        7210918.342640909
+      ]
+    },
+    {
+      "row": {
+        "x": 428210.5344968623,
+        "y": 7210480.313150261,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8185080059,
+        "direction_angle": 2.5505127518355324,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8185080059,
+        "lat": 65.0104137,
+        "lon": 25.4769275,
+        "tags": {
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        428210.384939173,
+        7210480.090302617
+      ]
+    },
+    {
+      "row": {
+        "x": 427676.3622484288,
+        "y": 7210925.446585019,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139558458,
+        "direction_angle": 2.5425047467962734,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139558458,
+        "lat": 65.0142974,
+        "lon": 25.4653809,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427676.7304023374,
+        7210925.985768727
+      ]
+    },
+    {
+      "row": {
+        "x": 427664.70360443526,
+        "y": 7210933.407091407,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139558457,
+        "direction_angle": 2.5425047467962734,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139558457,
+        "lat": 65.0143669,
+        "lon": 25.4651305,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427665.1194863077,
+        7210934.016175611
+      ]
+    },
+    {
+      "row": {
+        "x": 427669.29880334495,
+        "y": 7210938.553646517,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139584415,
+        "direction_angle": 2.542636932960157,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139584415,
+        "lat": 65.0144168,
+        "lon": 25.4652295,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427669.91943993286,
+        7210939.462864469
+      ]
+    },
+    {
+      "row": {
+        "x": 428124.4948345366,
+        "y": 7211041.864493445,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139535854,
+        "direction_angle": 0.9737095546946075,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139535854,
+        "lat": 65.0154436,
+        "lon": 25.4747834,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "6",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428122.8646065607,
+        7211042.972834189
+      ]
+    },
+    {
+      "row": {
+        "x": 427693.8225088532,
+        "y": 7211060.263420169,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12163413840,
+        "direction_angle": 0.9546274699195498,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12163413840,
+        "lat": 65.0155078,
+        "lon": 25.4656663,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427693.4530150207,
+        7211060.525073905
+      ]
+    },
+    {
+      "row": {
+        "x": 428071.05410538806,
+        "y": 7211076.418180428,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139558456,
+        "direction_angle": 2.580976022309735,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139558456,
+        "lat": 65.0157529,
+        "lon": 25.4736962,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "6",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428072.46951983345,
+        7211078.672711228
+      ]
+    },
+    {
+      "row": {
+        "x": 428078.10958916607,
+        "y": 7211078.584905995,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139590302,
+        "direction_angle": 2.5518006491915166,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139590302,
+        "lat": 65.0157337,
+        "lon": 25.4737864,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "6",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428076.6679099185,
+        7211076.430748851
+      ]
+    },
+    {
+      "row": {
+        "x": 427660.7884119036,
+        "y": 7210203.794025688,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8187815174,
+        "direction_angle": 2.556455761718508,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8187815174,
+        "lat": 65.0078221,
+        "lon": 25.4654235,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427661.2184152975,
+        7210204.443052943
+      ]
+    },
+    {
+      "row": {
+        "x": 428407.8538742412,
+        "y": 7210560.961548584,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 3751798162,
+        "direction_angle": 2.5701153430613997,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 3751798162,
+        "lat": 65.0111984,
+        "lon": 25.481098,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "49",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428409.0320542002,
+        7210562.793709697
+      ]
+    },
+    {
+      "row": {
+        "x": 427827.7011609327,
+        "y": 7210098.5093251765,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8187606243,
+        "direction_angle": 2.554908520751307,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8187606243,
+        "lat": 65.0069082,
+        "lon": 25.4690082,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427827.7058260261,
+        7210098.516342847
+      ]
+    },
+    {
+      "row": {
+        "x": 427841.49200443405,
+        "y": 7210063.450869916,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8187606244,
+        "direction_angle": 0.9828768579747716,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8187606244,
+        "lat": 65.0065943,
+        "lon": 25.4693274,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427841.9038066148,
+        7210063.176384577
+      ]
+    },
+    {
+      "row": {
+        "x": 428116.5314944819,
+        "y": 7210100.699451425,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8185099127,
+        "direction_angle": 0.9836899894086715,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8185099127,
+        "lat": 65.0069835,
+        "lon": 25.4751572,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "30",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428117.73341171007,
+        7210099.899728354
+      ]
+    },
+    {
+      "row": {
+        "x": 428146.63899588387,
+        "y": 7210095.386109765,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8185099135,
+        "direction_angle": 2.5625032458267025,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8185099135,
+        "lat": 65.0069614,
+        "lon": 25.4757902,
+        "tags": {
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        428147.50960663223,
+        7210096.717588078
+      ]
+    },
+    {
+      "row": {
+        "x": 428500.0084673512,
+        "y": 7210736.233921144,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8174102499,
+        "direction_angle": 2.5683097883987793,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8174102499,
+        "lat": 65.0127648,
+        "lon": 25.4829262,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        428499.37800814176,
+        7210735.257388449
+      ]
+    },
+    {
+      "row": {
+        "x": 428515.8821712789,
+        "y": 7210550.997075696,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 3751799668,
+        "direction_angle": 0.9951073357738078,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 3751799668,
+        "lat": 65.0110817,
+        "lon": 25.4833779,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "informal",
+          "capacity": "50",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428516.1632252518,
+        7210547.210296178
+      ]
+    },
+    {
+      "row": {
+        "x": 427803.9111591518,
+        "y": 7211264.83762291,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12163399128,
+        "direction_angle": 2.9830784237964147,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12163399128,
+        "lat": 65.0173822,
+        "lon": 25.4679098,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        427804.22661345196,
+        7211266.81099621
+      ]
+    },
+    {
+      "row": {
+        "x": 428121.5390708578,
+        "y": 7209988.054429893,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8185099147,
+        "direction_angle": 2.6007623322849733,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8185099147,
+        "lat": 65.0059823,
+        "lon": 25.4752967,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "8",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428121.6172729618,
+        7209988.184645448
+      ]
+    },
+    {
+      "row": {
+        "x": 427678.5007795096,
+        "y": 7209969.112477729,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8191062127,
+        "direction_angle": 1.014665943566031,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8191062127,
+        "lat": 65.0057029,
+        "lon": 25.4659599,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427680.76860348694,
+        7209967.702862016
+      ]
+    },
+    {
+      "row": {
+        "x": 427624.8573760321,
+        "y": 7209987.006024276,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8191048680,
+        "direction_angle": 0.9945220633571448,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8191048680,
+        "lat": 65.0058494,
+        "lon": 25.46482,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427627.4350813788,
+        7209985.330885964
+      ]
+    },
+    {
+      "row": {
+        "x": 428351.67725640466,
+        "y": 7211174.924142858,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12000020469,
+        "direction_angle": 2.531512941272948,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12000020469,
+        "lat": 65.0166669,
+        "lon": 25.4795541,
+        "tags": {
+          "access": "yes",
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "8",
+          "covered": "no",
+          "indoor": "no"
+        }
+      },
+      "raw_m": [
+        428350.93329691765,
+        7211173.85988026
+      ]
+    },
+    {
+      "row": {
+        "x": 428574.86542130145,
+        "y": 7210403.492685274,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 3751796139,
+        "direction_angle": 1.0000367601478288,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 3751796139,
+        "lat": 65.009811,
+        "lon": 25.4846735,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "36",
+          "covered": "no",
+          "fee": "no"
+        }
+      },
+      "raw_m": [
+        428573.825525508,
+        7210404.160340699
+      ]
+    },
+    {
+      "row": {
+        "x": 427615.3657527819,
+        "y": 7209964.803581991,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8191048681,
+        "direction_angle": 2.570225206845219,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8191048681,
+        "lat": 65.0056984,
+        "lon": 25.4645947,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        427616.40671780345,
+        7209968.764082339
+      ]
+    },
+    {
+      "row": {
+        "x": 428615.29484628944,
+        "y": 7210903.053060872,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8171252594,
+        "direction_angle": 1.557818243342394,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8171252594,
+        "lat": 65.0143141,
+        "lon": 25.4853375,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        428617.1444377708,
+        7210905.159788706
+      ]
+    },
+    {
+      "row": {
+        "x": 428620.61949299637,
+        "y": 7210898.481727036,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8171252595,
+        "direction_angle": 3.1176308412596563,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8171252595,
+        "lat": 65.0142495,
+        "lon": 25.4854193,
+        "tags": {
+          "access": "private",
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        428620.8264156511,
+        7210897.869471283
+      ]
+    },
+    {
+      "row": {
+        "x": 428239.78480507934,
+        "y": 7211374.432925486,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 14191301673,
+        "direction_angle": 0.8325526954930771,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 14191301673,
+        "lat": 65.0184357,
+        "lon": 25.477111,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "12",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428240.5721647021,
+        7211373.7165274555
+      ]
+    },
+    {
+      "row": {
+        "x": 428265.85091001814,
+        "y": 7211385.410069334,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139570924,
+        "direction_angle": 2.3909039225797484,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139570924,
+        "lat": 65.0185366,
+        "lon": 25.4776214,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "16",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428264.88971031795,
+        7211384.379716192
+      ]
+    },
+    {
+      "row": {
+        "x": 428341.1036083326,
+        "y": 7211352.179561745,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139539261,
+        "direction_angle": 0.8314276856328289,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139539261,
+        "lat": 65.0182481,
+        "lon": 25.4792985,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "20",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428343.1298704537,
+        7211350.331747551
+      ]
+    },
+    {
+      "row": {
+        "x": 428345.8477343664,
+        "y": 7211357.38183961,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139584758,
+        "direction_angle": 0.8314276856328289,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139584758,
+        "lat": 65.0182978,
+        "lon": 25.479391,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428347.62114871514,
+        7211355.764605505
+      ]
+    },
+    {
+      "row": {
+        "x": 428258.76425583416,
+        "y": 7211421.227299287,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 14191308538,
+        "direction_angle": 0.6629919898383405,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 14191308538,
+        "lat": 65.0188541,
+        "lon": 25.4774953,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "stands",
+          "capacity": "10",
+          "covered": "yes"
+        }
+      },
+      "raw_m": [
+        428259.8010376486,
+        7211419.899641221
+      ]
+    },
+    {
+      "row": {
+        "x": 428496.3876133796,
+        "y": 7211398.145494843,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 13755179086,
+        "direction_angle": 1.0217699500186705,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 13755179086,
+        "lat": 65.0187167,
+        "lon": 25.4824979,
+        "tags": {
+          "amenity": "bicycle_parking"
+        }
+      },
+      "raw_m": [
+        428495.1196740344,
+        7211398.921177539
+      ]
+    },
+    {
+      "row": {
+        "x": 428432.4262887515,
+        "y": 7211538.887177721,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 12139590123,
+        "direction_angle": 3.0499000677081085,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 12139590123,
+        "lat": 65.019958,
+        "lon": 25.4810965,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "wall_loops",
+          "capacity": "24",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        428432.4198245246,
+        7211538.816876501
+      ]
+    },
+    {
+      "row": {
+        "x": 429342.79147064773,
+        "y": 7210567.840568172,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 13332558107,
+        "direction_angle": 0.10571369351674775,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 13332558107,
+        "lat": 65.011466,
+        "lon": 25.5008913,
+        "tags": {
+          "amenity": "bicycle_parking",
+          "covered": "no"
+        }
+      },
+      "raw_m": [
+        429342.5264372594,
+        7210570.338308624
+      ]
+    },
+    {
+      "row": {
+        "x": 429472.66933276143,
+        "y": 7209685.876193925,
+        "kind": "bicycle_parking",
+        "name": null,
+        "id": 8987961042,
+        "direction_angle": 0.4280966602541292,
+        "is_area": false,
+        "opening_hours": null,
+        "capacity": null,
+        "level": null,
+        "backrest": null,
+        "height_m": null,
+        "points_m": null
+      },
+      "raw": {
+        "type": "node",
+        "id": 8987961042,
+        "lat": 65.0035589,
+        "lon": 25.5040969,
+        "tags": {
+          "access": "yes",
+          "amenity": "bicycle_parking",
+          "bicycle_parking": "rack",
+          "capacity": "5",
+          "covered": "no",
+          "fee": "no"
+        }
+      },
+      "raw_m": [
+        429472.7404556078,
+        7209685.720331927
+      ]
+    }
+  ]
+}

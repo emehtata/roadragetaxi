@@ -1,0 +1,70 @@
+{
+  "finding": "VQA-027",
+  "source_revision": "f566821c-dirty",
+  "renderer": "forward_plus on NVIDIA GeForce RTX 5060",
+  "resolution": [
+    1280.0,
+    720.0
+  ],
+  "before_checks": 659,
+  "before_failures": 264,
+  "linux_checks": 1539,
+  "native_checks": 1539,
+  "controls": 582,
+  "pytest_passed": 31,
+  "inspected_panels": 32,
+  "inspected_sheets": [
+    "review/rack_1.png",
+    "review/rack_2.png",
+    "review/rack_20m_1.png",
+    "review/rack_20m_2.png"
+  ],
+  "accepted_capture": "gameplay/first/vqa_bicycle_parking_rack_day/2026-06-20T1300_20261117-210939_f566821c-dirty/screenshot.png",
+  "readiness": "gameplay/first/vqa_bicycle_parking_rack_day/2026-06-20T1300_20261117-210939_f566821c-dirty/result.json",
+  "scene": {
+    "active_3d": true,
+    "angle": 0.996,
+    "envelope_m": [
+      3.0,
+      0.6
+    ],
+    "ground_m": 0.0,
+    "matched_vertices": 360,
+    "position": [
+      427817.4,
+      7210731.2
+    ],
+    "rect": [
+      536.601501464844,
+      431.440856933594,
+      193.03515625,
+      153.133361816406
+    ],
+    "region_rects": [
+      [
+        555.137390136719,
+        467.861938476563,
+        53.0263671875,
+        107.501403808594
+      ],
+      [
+        536.539611816406,
+        451.330108642578,
+        90.908935546875,
+        11.9531860351563
+      ]
+    ]
+  },
+  "mapped_osm_id": 12866515228,
+  "member_m": 0.06,
+  "opening_m": [
+    0.48,
+    0.74
+  ],
+  "envelope_m": [
+    3,
+    0.6,
+    0.8
+  ],
+  "excluded_gameplay": []
+}

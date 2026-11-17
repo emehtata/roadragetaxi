@@ -1,0 +1,388 @@
+{
+	"adapter": "NVIDIA GeForce RTX 5060",
+	"angles": [
+		"front",
+		"rear",
+		"left",
+		"right",
+		"front_three_quarter",
+		"rear_three_quarter",
+		"top",
+		"elevated"
+	],
+	"captures": [
+		{
+			"angle": "front",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				7.38000011444092,
+				0.400000005960464,
+				0.0
+			],
+			"camera_size": 0.944000005722046,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				-7.38000011444092,
+				0.400000005960464,
+				0.0
+			],
+			"camera_size": 0.944000005722046,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				0.0,
+				0.400000005960464,
+				-7.38000011444092
+			],
+			"camera_size": 2.46738123893738,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				0.0,
+				0.400000005960464,
+				7.38000011444092
+			],
+			"camera_size": 2.46738004684448,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				4.80397129058838,
+				3.28238296508789,
+				4.80397129058838
+			],
+			"camera_size": 2.17023801803589,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				-4.80397129058838,
+				3.28238296508789,
+				-4.80397129058838
+			],
+			"camera_size": 2.17023801803589,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				0.0,
+				7.77999687194824,
+				0.00737999705597758
+			],
+			"camera_size": 2.46738004684448,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "rack",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				3.57982611656189,
+				5.76973915100098,
+				-3.57982611656189
+			],
+			"camera_size": 2.50532197952271,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_day_elevated.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				20.0,
+				0.400000005960464,
+				0.0
+			],
+			"camera_size": 0.944000005722046,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_front.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				-20.0,
+				0.400000005960464,
+				0.0
+			],
+			"camera_size": 0.944000005722046,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_rear.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "left",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				0.0,
+				0.400000005960464,
+				-20.0
+			],
+			"camera_size": 2.46738362312317,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_left.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "right",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				0.0,
+				0.400000005960464,
+				20.0
+			],
+			"camera_size": 2.46738004684448,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_right.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "front_three_quarter",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				13.018892288208,
+				8.21133518218994,
+				13.018892288208
+			],
+			"camera_size": 2.17023801803589,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_front_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "rear_three_quarter",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				-13.018892288208,
+				8.21133518218994,
+				-13.018892288208
+			],
+			"camera_size": 2.17023801803589,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_rear_three_quarter.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "top",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				0.0,
+				20.3999900817871,
+				0.0199999921023846
+			],
+			"camera_size": 2.46738004684448,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_top.png",
+			"framed": true,
+			"ready": true
+		},
+		{
+			"angle": "elevated",
+			"asset": "rack_20m",
+			"bounds": [
+				-1.23000001907349,
+				0.0,
+				-0.300000011920929,
+				2.46000003814697,
+				0.800000011920929,
+				0.600000023841858
+			],
+			"camera_position": [
+				9.70142555236816,
+				14.9521369934082,
+				-9.70142555236816
+			],
+			"camera_size": 2.50532245635986,
+			"condition": "day",
+			"draw_frames": 3,
+			"file": "rack_20m_day_elevated.png",
+			"framed": true,
+			"ready": true
+		}
+	],
+	"renderer": "forward_plus",
+	"resolution": [
+		400,
+		340
+	]
+}

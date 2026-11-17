@@ -681,6 +681,8 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_obstacles()
 	test_day_night()
 	test_static_world()
+	test_bicycle_parking_rack_is_open()
+	test_bicycle_parking_geometry_preserved()
 	test_tent_profile_and_entrance()
 	test_tent_geometry_preserved()
 	test_caravan_with_car_recognizable_geometry()
@@ -4254,6 +4256,67 @@ func _ferris_surface_crosses(vertices:PackedVector3Array, point:Vector3, directi
 	for i in range(0,vertices.size(),3):
 		if Geometry3D.segment_intersects_triangle(point-direction*half,point+direction*half,vertices[i],vertices[i+1],vertices[i+2])!=null:return true
 	return false
+
+
+func _bicycle_rack(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
+	var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.props(out,[[at,angle,"bicycle_parking"]])
+	return out
+
+
+func test_bicycle_parking_rack_is_open() -> void:
+	for angle:float in [0.0,PI/2.0,PI,0.73]:
+		for at:Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
+			var out:=_bicycle_rack(at,angle)
+			var inverse:=Transform3D(Basis(Vector3.UP,angle),B3.to_3d(at)).affine_inverse()
+			var local:=PackedVector3Array()
+			for v:Vector3 in out.deck:local.append(inverse*v)
+			check(local.size()==360,"four hoops each have two uprights and a cap")
+			check(Array(local).all(func(v):return absf(v.x)<=1.5001 and absf(v.z)<=0.3001 and v.y>=-0.0001 and v.y<=0.8001),"rack retains oriented3x0.6x0.8m envelope")
+			check(Array(local).all(func(v):return [-1.2,-0.4,0.4,1.2].any(func(x):return absf(v.x-x)<=0.0401) and (absf(v.z)>=0.2399 or v.y>=0.7399)),"members remain under8cm thick and openings unfilled")
+			for offset:float in [-1.2,-0.4,0.4,1.2]:
+				for side:float in [-1.0,1.0]:
+					check(_ferris_surface_crosses(local,Vector3(offset,0.4,side*0.27),Vector3.RIGHT,0.04),"every hoop has grounded slender uprights")
+					check(Array(local).any(func(v):return absf(v.x-offset)<0.031 and absf(v.z-side*0.27)<0.031 and absf(v.y)<0.001),"both hoop feet reach ground")
+					check(_ferris_surface_crosses(local,Vector3(offset,0.75,side*0.245),Vector3.RIGHT,0.04),"top joins both uprights within5mm")
+				check(_ferris_surface_crosses(local,Vector3(offset,0.77,0),Vector3.RIGHT,0.04),"each hoop has a connected top bar")
+				for y:float in [0.05,0.4,0.70]:
+					for z:float in [-0.175,0.0,0.175]:
+						check(not _ferris_surface_crosses(local,Vector3(offset,y,z),Vector3.RIGHT,0.04),"hoop opening is at least0.35m wide and0.55m high")
+			for x:float in [-0.8,0,0.8]:
+				check(not _ferris_surface_crosses(local,Vector3(x,0.4,0),Vector3.FORWARD,0.5),"space between hoops remains open")
+			for i in range(0,local.size(),3):
+				check((local[i+1]-local[i]).cross(local[i+2]-local[i]).length()>0.00001,"rack triangles nondegenerate")
+			check(Array(out.deck_colors).all(func(c):return c==Color8(150,150,150)),"rack metal palette retained")
+
+
+func test_bicycle_parking_geometry_preserved() -> void:
+	check(B3.PROPS.bicycle_parking==[3.0,0.6,0.8,Color8(150,150,150)],"rack dimensions unchanged")
+	check(_carousel_ride_hash(_camp_pair())=="1e1bd10e564c5a037bacfef8e63959e2d3a40e4c6261d95c9f1889c6bc87dd38","caravan pair unchanged")
+	check(_carousel_ride_hash(_tent_mesh())=="4229eff0efe46af8aa5439790f0438f30d92f4f528d4b7603fae8491c5ec0db5","tent unchanged")
+	for ground:float in [0.0,13.5]:
+		var grid:={"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
+		var input:={"rect":Rect2(-50,-50,100,100),"props":[[Vector2(17,-23),0.73,"bicycle_parking"]],"ground_heights":grid}
+		var expected:=_bicycle_rack(Vector2(17,-23),0.73)
+		for i in expected.deck.size():expected.deck[i].y+=ground
+		var built:=B3.build([],[],Vector2.ZERO,[],[],input)
+		check(built.deck==expected.deck and built.deck_colors==expected.deck_colors,"rack final grounded geometry")
+		check(built==B3.build([],[],Vector2.ZERO,[],[],input),"rack rebuild stable")
+	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
+	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
+	var map:=MapLayer.new();root.add_child(map)
+	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"scenery_objects":[[25.0,25.0,"bicycle_parking",0.73]]}
+	map.add_chunk(row.duplicate(true));var faces:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
+	map.replace_chunk(row.duplicate(true));var replacement:=[]
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"rack chunk replacement stable")
+	map.clear();check(map._chunks.is_empty(),"rack chunk unload")
+	map.add_chunk(row.duplicate(true));replacement.clear()
+	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
+	check(faces==replacement,"rack chunk reload stable")
+	check(map._chunks["0_0"].meshes_3d.any(func(mesh):return mesh.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON),"rack deck casts shadows")
+	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
 
 
 func _tent_mesh(at := Vector2.ZERO, angle := 0.0) -> Dictionary:

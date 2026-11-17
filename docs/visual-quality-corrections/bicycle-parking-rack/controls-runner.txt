@@ -1,0 +1,14 @@
+extends "res://tests/run_tests.gd"
+func _process(_delta:float)->bool:
+ MapChunk.build_async=false
+ test_buildings_3d()
+ test_caravan_with_car_recognizable_geometry()
+ test_caravan_with_car_geometry_preserved()
+ test_tent_profile_and_entrance()
+ test_tent_geometry_preserved()
+ test_bicycle_lamps_single_pair()
+ test_bicycle_headlight_single_beam()
+ test_resent_chunk_buildings()
+ test_deck_height_adds_ground()
+ print("RACK CONTROLS: %d checks, %d failed"%[_checks,_failures])
+ quit(1 if _failures else 0);return true
