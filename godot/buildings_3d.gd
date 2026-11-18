@@ -965,10 +965,10 @@ const CAR_MODEL_KINDS := ["saloon", "city_car", "hatchback", "estate", "suv", "s
 static var _merged_models := {}
 
 
-static func merged_model(kind: String) -> ArrayMesh:
+static func merged_model(kind: String, scene: PackedScene = null) -> ArrayMesh:
 	if _merged_models.has(kind):
 		return _merged_models[kind]
-	var source: Node3D = MODEL_SCENES[kind].instantiate()
+	var source: Node3D = (scene if scene != null else MODEL_SCENES[kind]).instantiate()
 	var tools := {}  # Material -> SurfaceTool, in first-seen order
 	for mi: MeshInstance3D in source.find_children("*", "MeshInstance3D", true, false):
 		var xform := Transform3D()
@@ -2119,6 +2119,19 @@ static func build(buildings: Array, styles: Array, origin: Vector2, sites: Array
 				if flat[i / 3]:
 					n[i] = terrain_normal(grid, Vector2(verts[i].x, verts[i].z), gradients)
 			normals[key] = n
+	for part: Dictionary in out.get("prop_surfaces", {}).values():
+		for i in part.verts.size():
+			var point := Vector2(part.verts[i].x, part.verts[i].z)
+			part.verts[i].y += ground_height(grid, point)
+			if not grid.is_empty():
+				var up := terrain_normal(grid, point, gradients)
+				var gradient := Vector2(-up.x / up.y, -up.z / up.y)
+				var normal: Vector3 = part.normals[i]
+				part.normals[i] = Vector3(normal.x-gradient.x*normal.y, normal.y, normal.z-gradient.y*normal.y).normalized()
+				var tangent := Vector3(part.tangents[i*4],part.tangents[i*4+1],part.tangents[i*4+2])
+				tangent.y += gradient.dot(Vector2(tangent.x,tangent.z))
+				tangent = tangent.normalized()
+				for k in 3: part.tangents[i*4+k] = tangent[k]
 	out["normals"] = normals
 	out["lit_colors"] = lit_colors(out["lit"])
 	out["stats"]["triangles"] = (out["verts"].size() + out["lit"].size() + out["glass"].size() + out["ground"].size() + out["road"].size()) / 3
@@ -2138,6 +2151,21 @@ static func meshes(arrays: Dictionary) -> Array:
 ## returns its instances, so the main thread can spread a chunk over frames.
 static func mesh_steps(arrays: Dictionary) -> Array:
 	var steps: Array = []
+	for part: Dictionary in arrays.get("prop_surfaces", {}).values():
+		for r: Vector2i in _pieces(part.verts.size()):
+			steps.append(func():
+				var data := []
+				data.resize(Mesh.ARRAY_MAX)
+				data[Mesh.ARRAY_VERTEX] = _cut(part.verts, r)
+				data[Mesh.ARRAY_NORMAL] = _cut(part.normals, r)
+				data[Mesh.ARRAY_TEX_UV] = _cut(part.uv, r)
+				data[Mesh.ARRAY_TANGENT] = _cut(part.tangents, r, 4)
+				var mesh := ArrayMesh.new()
+				mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, data)
+				var node := _instance(mesh, part.material, LAYER_BUILDINGS)
+				node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+				node.set_meta("prop_material", part.material.resource_name)
+				return [node])
 	for r in _pieces(arrays.get("ground", PackedVector3Array()).size()):
 		steps.append(func(): return [_instance(_mesh(_cut(arrays["ground"], r), _cut(arrays["ground_colors"], r), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _cut(_n(arrays, "ground"), r)), _shared["ground"], LAYER_BUILDINGS)])
 	if not arrays.get("deck", PackedVector3Array()).is_empty():
@@ -3173,10 +3201,52 @@ const WIRE_M := 8.6  # the crossarm's height: where the wires hang
 const WIRE_SPAN_MAX_M := 150.0
 
 
+const SWING_SCENE := preload("res://assets/props/swing_set.glb")
+static var _swing_surfaces := {}  # immutable source arrays, prepared on the main thread before chunk workers
+
+
+static func swing_surfaces() -> Dictionary:
+	if not _swing_surfaces.is_empty():
+		return _swing_surfaces
+	var mesh := merged_model("swing_set", SWING_SCENE)
+	var bounds := mesh.get_aabb()
+	var scale := minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
+	var centre := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
+	for surface in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(surface)
+		var part := {"verts": PackedVector3Array(), "normals": PackedVector3Array(), "uv": PackedVector2Array(), "tangents": PackedFloat32Array(), "material": mesh.surface_get_material(surface)}
+		for index: int in arrays[Mesh.ARRAY_INDEX]:
+			part.verts.append((arrays[Mesh.ARRAY_VERTEX][index] - centre) * scale)
+			part.normals.append(arrays[Mesh.ARRAY_NORMAL][index])
+			part.uv.append(arrays[Mesh.ARRAY_TEX_UV][index])
+			for k in 4: part.tangents.append(arrays[Mesh.ARRAY_TANGENT][index * 4 + k])
+		_swing_surfaces[surface] = part
+	return _swing_surfaces
+
+
+static func _swing_prop(out: Dictionary, at: Vector2, angle: float) -> void:
+	var placement := Transform3D(Basis(Vector3.UP, angle), to_3d(at))
+	if not out.has("prop_surfaces"): out["prop_surfaces"] = {}
+	for key in swing_surfaces():
+		var source: Dictionary = _swing_surfaces[key]
+		if not out.prop_surfaces.has(key):
+			out.prop_surfaces[key] = {"verts": PackedVector3Array(), "normals": PackedVector3Array(), "uv": PackedVector2Array(), "tangents": PackedFloat32Array(), "material": source.material}
+		var target: Dictionary = out.prop_surfaces[key]
+		for i in source.verts.size():
+			target.verts.append(placement * source.verts[i])
+			target.normals.append(placement.basis * source.normals[i])
+			var tangent: Vector3 = placement.basis * Vector3(source.tangents[i*4], source.tangents[i*4+1], source.tangents[i*4+2])
+			target.tangents.append_array(PackedFloat32Array([tangent.x, tangent.y, tangent.z, source.tangents[i*4+3]]))
+		target.uv.append_array(source.uv)
+
+
 static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angle, kind, length (camper_van: the server's), bench: backrest 0/1]
 	for row: Array in rows:
 		var look: Array = PROPS.get(row[2], [])
 		if look.is_empty():
+			continue
+		if row[2] == "swing":
+			_swing_prop(out, row[0], float(row[1]))
 			continue
 		if GAP_KINDS.has(row[2]):
 			_gap_prop(out, row[0], float(row[1]), str(row[2]), float(row[3] if row.size() > 3 else look[2]), look[3])

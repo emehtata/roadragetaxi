@@ -1,0 +1,38 @@
+{
+  "file": "swing_set.glb",
+  "title": "Swing Set",
+  "source": "Grab3D",
+  "kit": "Cozy Playground & Gym",
+  "page_url": "https://grab3d.com/models/toys/swing-set/",
+  "download_url": "https://grab3d.com/dl/swing-set/swing-set.glb",
+  "download_date": "2026-11-18",
+  "sha256": "6197b924aba6ea102b8ef9544cc594743ee14d0c05f8018bb2b4edf8bad9a614",
+  "bytes": 2071072,
+  "triangles": 19740,
+  "materials": 3,
+  "source_bounds_min_xyz_m": [
+    -1.7999999523162842,
+    -1.4901161193847656e-08,
+    -1.0089935064315796
+  ],
+  "source_bounds_max_xyz_m": [
+    1.7999999523162842,
+    2.430000066757202,
+    1.0089935064315796
+  ],
+  "source_dimensions_xyz_m": [
+    3.5999999046325684,
+    2.4300000816583633,
+    2.017987012863159
+  ],
+  "uniform_scale": 0.8919779902082349,
+  "rendered_dimensions_xyz_m": [
+    3.2111206796839955,
+    2.1675065890434735,
+    1.8
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; runtime child-transform merge, ground-centred origin and uniform scale; static neutral pose."
+}

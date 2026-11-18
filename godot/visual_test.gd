@@ -929,6 +929,7 @@ func _check_map(centre: Vector2) -> Array:
 						if occupied.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam obscured by nearer dynamic body")
 					coaster={("support" if ferris else "seat" if carousel else "seam"):[row[1][0][0],row[1][0][1]],"path_points":loop.size(),"active_3d":true,("support_rect" if carousel or ferris else "seam_rect"):[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"height_m":seam[2].y if ferris else 7.0 if swing else 0.9 if carousel else 4.5,"ground_m":Buildings3D.ground_height(chunk.ground_heights,loop[0]),"matched_vertices":expected.deck.size()}
 		if not found: missing.append("expected mapped attraction path not drawn")
+	var swing_glb := _check_swing_glb(camera_3d, screen_size, hud, missing) if scenario.has("swing_target") else {}
 	var camp_pair := {}
 	if scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target"):
 		var picnic:=scenario.has("picnic_table_target")
@@ -1435,6 +1436,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not felled.is_empty(): _counts["felled_tree"] = felled
 	if not tower.is_empty(): _counts["power_tower"] = tower
 	if not coaster.is_empty(): _counts["ferris_wheel" if scenario.has("ferris_supports") else "swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
+	if not swing_glb.is_empty(): _counts["swing_glb"] = swing_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
@@ -1741,3 +1743,95 @@ func _state_timeline_summary(buffer) -> Dictionary:
 		"tile_events": events.size(), "long_gaps_near_tile_events": long_gaps.filter(func(g): return g["near_tile_event"]).size(),
 		"long_gaps": long_gaps.slice(0, 40), "underruns": buffer.underruns, "underrun_episodes": buffer.underrun_episodes,
 		"render_backsteps": buffer.render_backsteps, "clock_snaps": buffer.clock_snaps}
+
+
+var _swing_geometry_cache := {}
+
+
+func _check_swing_glb(camera: Camera3D, screen: Vector2, hud: Array, missing: Array) -> Dictionary:
+	if camera == null: return {}
+	var target: Array = scenario.swing_target
+	var layer = layer_3d_view()
+	for chunk in main.map_layer._chunks.values():
+		for row: Array in chunk._data.get("scenery_objects", []):
+			if row[2] != "swing" or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1])) > 0.01: continue
+			if absf(angle_difference(row[3],target[2])) > 0.001: missing.append("swing heading differs from target")
+			var at := MapMath.point(chunk._origin,row[0],row[1])
+			var id: int = chunk.get_instance_id()
+			if chunk._building_task >= 0 or chunk.meshes_3d.is_empty():
+				missing.append("swing chunk meshes still building")
+				return {}
+			if not _swing_geometry_cache.has(id):
+				var expected := Buildings3D.build([],[],Vector2.ZERO,[],[],{"props":[[at,float(row[3]),"swing"]],"ground_heights":chunk.ground_heights,"rect":chunk._bounds_rect})
+				var nodes := []
+				var faces := PackedVector3Array()
+				var matched := true
+				for part: Dictionary in expected.prop_surfaces.values():
+					var actual := PackedVector3Array()
+					for mesh: MeshInstance3D in chunk.meshes_3d:
+						if mesh.mesh != null and mesh.has_meta("prop_material") and mesh.material_override == part.material:
+							actual.append_array(mesh.mesh.get_faces());nodes.append(mesh)
+					matched = matched and _swing_faces_present(actual,part.verts)
+					faces.append_array(part.verts)
+				var bounds := AABB(faces[0],Vector3.ZERO)
+				for v: Vector3 in faces: bounds=bounds.expand(v)
+				var feet := {}
+				for part: Dictionary in Buildings3D.swing_surfaces().values():
+					for v: Vector3 in part.verts:
+						if v.y <= 0.005: feet[Vector2(signf(v.x),signf(v.z))] = v
+				_swing_geometry_cache[id] = {"matched":matched,"nodes":nodes,"vertex_count":faces.size(),"bounds":bounds,"feet":feet.values()}
+			var cached: Dictionary = _swing_geometry_cache[id]
+			if not cached.matched or cached.vertex_count != 19740*3:
+				missing.append("exact swing GLB triangles/materials absent from final chunk")
+				return {}
+			if layer==null or not MapChunkScript.outdoor_3d or not Buildings3D.opaque or layer._view.get_camera_3d()!=camera or not layer._sprite.is_visible_in_tree(): missing.append("swing 3D view not active")
+			for mesh: MeshInstance3D in cached.nodes:
+				if not mesh.is_visible_in_tree() or mesh.layers & camera.cull_mask == 0: missing.append("swing batch not visible")
+			var frame: MeshInstance3D = cached.nodes[0]
+			var rect := Rect2()
+			var first := true
+			for corner in 8:
+				var point: Vector3 = frame.global_transform*cached.bounds.get_endpoint(corner)
+				if not camera.is_position_in_frustum(point): missing.append("swing outside frustum");break
+				var pixel := camera.unproject_position(point)
+				rect = Rect2(pixel,Vector2.ZERO) if first else rect.expand(pixel);first=false
+			if rect.size.x < 100 or rect.size.y < 80 or not Rect2(Vector2.ZERO,screen).encloses(rect): missing.append("swing too small or offscreen")
+			for panel: Rect2 in hud:
+				if panel.intersects(rect): missing.append("swing under HUD")
+			var placement := Transform3D(Basis(Vector3.UP,float(row[3])),Buildings3D.to_3d(at))
+			var foot_error := 0.0
+			var probes := [Vector3(-0.589,0.34,0),Vector3(0.589,0.34,0),Vector3(0,2.10,0)]
+			for local: Vector3 in cached.feet:
+				probes.append(local+Vector3.UP*0.03)
+				var foot: Vector3 = placement*local
+				foot.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
+				foot_error = maxf(foot_error,absf((frame.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false)))
+			if foot_error > 0.01: missing.append("swing feet floating or buried")
+			# Seats and crossbeam must be clear of surrounding drawn geometry.
+			for local: Vector3 in probes:
+				var point: Vector3 = placement*local
+				point.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(point.x,point.z))
+				point = frame.global_transform*point
+				for other in main.map_layer._chunks.values():
+					for solid: MeshInstance3D in other.meshes_3d:
+						if not solid.is_visible_in_tree() or solid.mesh==null or solid.layers & camera.cull_mask==0 or solid in cached.nodes: continue
+						var inverse := solid.global_transform.affine_inverse()
+						if solid.get_aabb().intersects_segment(inverse*camera.global_position,inverse*point) == null: continue
+						if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+						if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera.global_position,inverse*point).is_empty(): missing.append("swing seat/frame hidden by drawn geometry")
+			return {"position":[row[0],row[1]],"angle":row[3],"triangles":cached.vertex_count/3,"materials":3,"matched_final_geometry":true,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"foot_error_m":foot_error,"osm_playground_way":893436783}
+	missing.append("expected generated swing in mapped playground not loaded")
+	return {}
+
+
+func _swing_faces_present(actual: PackedVector3Array, wanted: PackedVector3Array) -> bool:
+	# Chunk batches retain triangle order, even across the bounded upload pieces.
+	if wanted.is_empty(): return false
+	for start in range(0,actual.size()-wanted.size()+1,3):
+		if actual[start].distance_squared_to(wanted[0]) > 0.000001: continue
+		var matched := true
+		for i in wanted.size():
+			if actual[start+i].distance_squared_to(wanted[i]) > 0.000001:
+				matched=false;break
+		if matched: return true
+	return false

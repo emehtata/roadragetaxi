@@ -1595,6 +1595,56 @@
     {"id":"vqa_caravan_with_car_day","description":"VQA-025 separate towing car and caravan joined by hitch","why":"Normal populate_camp_pitches from mapped Nallikari pitch OSM node2450243248 (ref148); point pitch5m envelope, actual normal caravan_with_car row, camera held over pitch from sourced service-road pose. No synthetic camping fixture. Actual mesh and car/caravan/hitch visibility required.","city":"Oulu","pose":[425646.3,7212617.6,2.848],"camera_at":[425641.6101064687,7212631.056993239],"pitches":[[425641.6101064687,7212631.056993239,5.0]],"start_time":"2026-06-20T13:00","weather":"clear","cloud":0.1,"wetness":[0,0.05],"sun_altitude_deg":[30,90],"zoom":3.5,"view":"3d","requires":{},"measure_s":1,"server_args":["--no-auto-fetch","--no-terrain-dem80"],"isolated_settings":true,"caravan_with_car_target":[425641.6101064687,7212631.056993239,4.418927605526749]},
     {"id": "vqa_tent_geometry_day", "description": "VQA-026 pitched tent roof and forward entrance", "why": "Normal populate_camp_pitches output at mapped Nallikari pitch OSM node2450243261 (no ref tag). Actual generated tent row, full oriented3.2x2.4m server envelope; existing eye camera sees entrance and roof. No synthetic camp object.", "city": "Oulu", "pose": [425646.3, 7212617.6, 2.848], "camera_at": [425633.3762166767, 7212633.827008173], "pitches": [[425633.3762166767, 7212633.827008173, 5.0]], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0, 0.05], "sun_altitude_deg": [30, 90], "zoom": 3.5, "view": "3d", "requires": {}, "measure_s": 1, "server_args": ["--no-auto-fetch", "--no-terrain-dem80"], "isolated_settings": true, "tent_target": [425633.3762166767, 7212633.827008173, 4.418927605526749], "camera": "eye", "eye": {"at": [425608.2080780592, 7212603.926380042], "height": 2.5, "yaw": -1.9768746477040542}},
     {"id": "vqa_bicycle_parking_rack_day", "description": "VQA-027 four open bicycle-parking hoops", "why": "Actual mapped Oulu bicycle parking OSM node12866515228 (stands, capacity10), path-aligned by normal build_ways. Existing sourced Oulu road pose; exact row/mesh, directly visible opening and slender top member required. Representative four-hoop geometry; mapped capacity/style not reconstructed.", "city": "Oulu", "pose": [427897.3, 7210634.9, 2.555], "camera_at": [427817.42041195, 7210731.164825593], "start_time": "2026-06-20T13:00", "weather": "clear", "cloud": 0.1, "wetness": [0, 0.05], "sun_altitude_deg": [30, 90], "zoom": 3, "view": "3d", "requires": {}, "measure_s": 1, "server_args": ["--no-auto-fetch", "--no-terrain-dem80"], "isolated_settings": true, "bicycle_parking_target": [427817.42041195, 7210731.164825593, 0.9963534952950144], "camera": "eye", "eye": {"at": [427819.79223062366, 7210740.350383615], "height": 1.35, "yaw": 1.9046967032804467}},
-    {"id":"vqa_picnic_table_geometry_day","description":"VQA-028 raised picnic tabletop, benches and open supports","why":"Actual mapped Oulu picnic table OSM node10053759118, normal path-aligned build_ways row; representative simple wood geometry. Existing sourced Oulu road pose, existing eye camera beside actual table; exact mesh, ground, directly visible opening/seat contact/tabletop required.","city":"Oulu","pose":[427897.3,7210634.9,2.555],"camera_at":[428650.4975534305,7210925.380210311],"start_time":"2026-06-20T13:00","weather":"clear","cloud":0.1,"wetness":[0,0.05],"sun_altitude_deg":[30,90],"zoom":3,"view":"3d","requires":{},"measure_s":1,"server_args":["--no-auto-fetch","--no-terrain-dem80"],"isolated_settings":true,"picnic_table_target":[428650.4975534305,7210925.380210311,0.019297309075672852],"camera":"eye","eye":{"at":[428659.0040476812,7210919.943340296],"height":1.15,"yaw":0.017887359117565005}}
+    {"id":"vqa_picnic_table_geometry_day","description":"VQA-028 raised picnic tabletop, benches and open supports","why":"Actual mapped Oulu picnic table OSM node10053759118, normal path-aligned build_ways row; representative simple wood geometry. Existing sourced Oulu road pose, existing eye camera beside actual table; exact mesh, ground, directly visible opening/seat contact/tabletop required.","city":"Oulu","pose":[427897.3,7210634.9,2.555],"camera_at":[428650.4975534305,7210925.380210311],"start_time":"2026-06-20T13:00","weather":"clear","cloud":0.1,"wetness":[0,0.05],"sun_altitude_deg":[30,90],"zoom":3,"view":"3d","requires":{},"measure_s":1,"server_args":["--no-auto-fetch","--no-terrain-dem80"],"isolated_settings":true,"picnic_table_target":[428650.4975534305,7210925.380210311,0.019297309075672852],"camera":"eye","eye":{"at":[428659.0040476812,7210919.943340296],"height":1.15,"yaw":0.017887359117565005}},
+    {
+      "id": "vqa_swing_glb_day",
+      "description": "VQA-029 Grab3D two-seat Swing Set in a mapped Oulu playground",
+      "why": "Mapped Oulu playground OSM way 893436783 (leisure=playground, access=private). Normal loaded server playground_equipment output includes [427506.0,7209727.0,swing,-0.586], among its generated equipment rows. No prop is injected. Existing sourced Oulu on-road taxi pose and separate eye camera inspect the actual generated swing; readiness requires its exact GLB triangles/materials in the final chunk, grounded feet, frame/seat visibility and clear view.",
+      "city": "Oulu",
+      "pose": [
+        427897.3,
+        7210634.9,
+        2.555
+      ],
+      "camera_at": [
+        427506.0,
+        7209727.0
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 3,
+      "view": "3d",
+      "requires": {},
+      "measure_s": 1,
+      "server_args": [
+        "--no-auto-fetch",
+        "--no-terrain-dem80"
+      ],
+      "isolated_settings": true,
+      "camera": "eye",
+      "eye": {
+        "at": [
+          427500.0,
+          7209718.6
+        ],
+        "height": 1.15,
+        "yaw": -1.604453159187925
+      },
+      "box_km": 2.8,
+      "swing_target": [
+        427506.0,
+        7209727.0,
+        -0.586
+      ]
+    }
 ]
 }

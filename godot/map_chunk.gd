@@ -793,6 +793,8 @@ var _built_view := Vector2.INF
 
 ## Build either 3D meshes or flat footprints, independently of camera movement.
 func _build_2_5d() -> void:
+	if _data.get("scenery_objects", []).any(func(row): return row[2] == "swing"):
+		B3.swing_surfaces()  # instantiate/merge once before any chunk worker reads the cache
 	var started := Time.get_ticks_usec()
 	var buildings: Array = _data.get("buildings", [])
 	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D

@@ -367,7 +367,7 @@ func _with_help(control: Control, help_key: String) -> void:
 ## (LICENSE_AUDIT.md, THIRD_PARTY_LICENSES.md, assets/DATA_LICENSES.txt), as
 ## BBCode. In English: licence names and attribution lines stay as their
 ## licensors write them.
-static func credits_text() -> String:
+static func credits_text(language := "en") -> String:
 	var lines := PackedStringArray([
 		"[b]Road Rage Trip[/b] © 2026 Esa Mehtätalo. The game's own code is under the MIT License; the data, sounds and software below are not.",
 		"",
@@ -377,6 +377,9 @@ static func credits_text() -> String:
 		"",
 		"[b]Terrain[/b]",
 		T.text("credits_terrain", "en"),
+		"",
+		"[b]3D models[/b]",
+		T.text("credits_swing", language),
 		"",
 		"[b]Trains[/b]",
 		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: the passenger timetable and train compositions are condensed for the game.",
@@ -413,7 +416,7 @@ func _credits_menu() -> void:
 	text.bbcode_enabled = true
 	text.custom_minimum_size = Vector2(640, 420)
 	text.scroll_active = true
-	text.text = credits_text() + "\n\n[b]Godot Engine[/b]\n" + Engine.get_license_text() + "\n" + _godot_components()
+	text.text = credits_text(_language) + "\n\n[b]Godot Engine[/b]\n" + Engine.get_license_text() + "\n" + _godot_components()
 	text.meta_clicked.connect(func(meta): OS.shell_open(str(meta)))
 	_body.add_child(text)
 	_focusables.append(text)
