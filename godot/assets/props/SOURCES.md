@@ -15,3 +15,9 @@ SHA-256: `6197b924aba6ea102b8ef9544cc594743ee14d0c05f8018bb2b4edf8bad9a614`.
 The unchanged GLB contains 15,988 triangles and one PBR material. Measured source X/Y/Z dimensions are 1.010913 × 2.058000 × 3.866525 m. Runtime batching bakes the original child transform, centres the ground footprint and rotates +90 degrees around Y to place the downhill chute along local +X. Uniform scale 0.827616594 fits the existing 3.2 × 0.9 × 1.8 m length/width/height envelope; rendered X/Y/Z dimensions are 3.200000 × 1.703235 × 0.836648 m. Source materials, UVs, normals and generated tangents are retained, and terrain height follows the existing prop placement path. No new collision or simulation data is introduced.
 
 SHA-256: `ada2534de7aacd5253ce5fa4b3db1c9107cec3bd9f904243a8b192a90c64c1fe`.
+
+## Spring Rider
+
+[Spring Rider](https://grab3d.com/models/city/spring-rider/), Grab3D Cozy Playground & Gym Kit. Downloaded 2026-11-18 from https://grab3d.com/dl/spring-rider/spring-rider.glb, under CC0 1.0 public domain. Full legal text is retained in `CC0-1.0.txt`; hash, measured bounds and static runtime transforms are in `spring_rider.json`. The source GLB bytes are unchanged. Godot extracts the embedded JPG textures during import.
+
+The model is uniformly scaled to 0.8 m height within the server's existing 0.8 m radial equipment clearance, ground centred and rotated +90 degrees around Y so the ladybug faces local +X. The separate ladybug/spring and base child transforms are retained in the static material batches.

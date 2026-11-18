@@ -1,0 +1,39 @@
+{
+  "file": "spring_rider.glb",
+  "title": "Spring Rider",
+  "source": "Grab3D",
+  "kit": "Cozy Playground & Gym",
+  "page_url": "https://grab3d.com/models/city/spring-rider/",
+  "download_url": "https://grab3d.com/dl/spring-rider/spring-rider.glb",
+  "download_date": "2026-11-18",
+  "sha256": "0376ae93e099ee22d0a7987013e2a4607e9bf548d889fc1f37e2d96ae8df4be6",
+  "bytes": 1288940,
+  "triangles": 17858,
+  "materials": 2,
+  "source_bounds_min_xyz_m": [
+    -0.375,
+    0.0,
+    -0.4768793284893036
+  ],
+  "source_bounds_max_xyz_m": [
+    0.375,
+    0.9855955578386784,
+    0.4768793284893036
+  ],
+  "source_dimensions_xyz_m": [
+    0.75,
+    0.9855955578386784,
+    0.9537586569786072
+  ],
+  "yaw_radians": 1.5707963267948966,
+  "uniform_scale": 0.811691970035181,
+  "rendered_dimensions_xyz_m": [
+    0.7741582432210741,
+    0.8,
+    0.6087689775263858
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; runtime child-transform merge, ground-centred origin, +90 degree yaw and uniform scale; static pose."
+}

@@ -3203,6 +3203,7 @@ const WIRE_SPAN_MAX_M := 150.0
 
 const SWING_SCENE := preload("res://assets/props/swing_set.glb")
 const SLIDE_SCENE := preload("res://assets/props/playground_slide.glb")
+const SPRING_RIDER_SCENE := preload("res://assets/props/spring_rider.glb")
 static var _prop_model_surfaces := {}  # immutable source arrays, prepared on the main thread before chunk workers
 
 
@@ -3214,11 +3215,13 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 	if _prop_model_surfaces.has(kind):
 		return _prop_model_surfaces[kind]
 	var slide := kind == "slide"
-	var mesh := merged_model("playground_slide" if slide else "swing_set", SLIDE_SCENE if slide else SWING_SCENE)
+	var spring_rider := kind == "spring_rider"
+	var mesh := merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
 	var bounds := mesh.get_aabb()
 	var scale := minf(3.2 / bounds.size.z, minf(1.8 / bounds.size.y, 0.9 / bounds.size.x)) if slide else minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
+	if spring_rider: scale = 0.8 / bounds.size.y
 	var centre := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
-	var basis := Basis(Vector3.UP, PI/2.0) if slide else Basis.IDENTITY
+	var basis := Basis(Vector3.UP, PI/2.0) if slide or spring_rider else Basis.IDENTITY
 	var surfaces := {}
 	for surface in mesh.get_surface_count():
 		var arrays := mesh.surface_get_arrays(surface)
@@ -3256,7 +3259,7 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var look: Array = PROPS.get(row[2], [])
 		if look.is_empty():
 			continue
-		if row[2] in ["swing", "slide"]:
+		if row[2] in ["swing", "slide", "spring_rider"]:
 			_model_prop(out, row[0], float(row[1]), row[2])
 			continue
 		if GAP_KINDS.has(row[2]):

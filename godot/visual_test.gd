@@ -931,6 +931,7 @@ func _check_map(centre: Vector2) -> Array:
 		if not found: missing.append("expected mapped attraction path not drawn")
 	var swing_glb := _check_prop_glb("swing", camera_3d, screen_size, hud, missing) if scenario.has("swing_target") else {}
 	var slide_glb := _check_prop_glb("slide", camera_3d, screen_size, hud, missing) if scenario.has("slide_target") else {}
+	var spring_rider_glb := _check_prop_glb("spring_rider", camera_3d, screen_size, hud, missing) if scenario.has("spring_rider_target") else {}
 	var camp_pair := {}
 	if scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target"):
 		var picnic:=scenario.has("picnic_table_target")
@@ -1439,6 +1440,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not coaster.is_empty(): _counts["ferris_wheel" if scenario.has("ferris_supports") else "swing_carousel" if scenario.has("swing_supports") else "carousel" if scenario.has("carousel_supports") else "coaster"] = coaster
 	if not swing_glb.is_empty(): _counts["swing_glb"] = swing_glb
 	if not slide_glb.is_empty(): _counts["slide_glb"] = slide_glb
+	if not spring_rider_glb.is_empty(): _counts["spring_rider_glb"] = spring_rider_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
@@ -1754,8 +1756,8 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if camera == null: return {}
 	var target: Array = scenario[kind+"_target"]
 	var layer = layer_3d_view()
-	var triangles := 15988 if kind == "slide" else 19740
-	var material_count := 1 if kind == "slide" else 3
+	var triangles := 17858 if kind == "spring_rider" else (15988 if kind == "slide" else 19740)
+	var material_count := 2 if kind == "spring_rider" else (1 if kind == "slide" else 3)
 	for chunk in main.map_layer._chunks.values():
 		for row: Array in chunk._data.get("scenery_objects", []):
 			if row[2] != kind or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1])) > 0.01: continue
@@ -1782,7 +1784,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 				var feet := {}
 				for part: Dictionary in Buildings3D.prop_model_surfaces(kind).values():
 					for v: Vector3 in part.verts:
-						if v.y <= 0.005: feet[Vector2(roundf(v.x*10),roundf(v.z*10)) if kind=="slide" else Vector2(signf(v.x),signf(v.z))] = v
+						if v.y <= 0.005: feet[Vector2(roundf(v.x*10),roundf(v.z*10)) if kind!="swing" else Vector2(signf(v.x),signf(v.z))] = v
 				_prop_glb_geometry_cache[id] = {"matched":matched,"nodes":nodes,"vertex_count":faces.size(),"bounds":bounds,"feet":feet.values()}
 			var cached: Dictionary = _prop_glb_geometry_cache[id]
 			if not cached.matched or cached.vertex_count != triangles*3:
@@ -1804,7 +1806,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 				if panel.intersects(rect): missing.append(kind+" under HUD")
 			var placement := Transform3D(Basis(Vector3.UP,float(row[3])),Buildings3D.to_3d(at))
 			var foot_error := 0.0
-			var probes := [Vector3(-0.65,1.2,0),Vector3(-1.2,0.5,0),Vector3(0.5,0.55,0),Vector3(1.3,0.2,0)] if kind=="slide" else [Vector3(-0.589,0.34,0),Vector3(0.589,0.34,0),Vector3(0,2.10,0)]
+			var probes := [Vector3(-0.65,1.2,0),Vector3(-1.2,0.5,0),Vector3(0.5,0.55,0),Vector3(1.3,0.2,0)] if kind=="slide" else ([Vector3(0.20,0.57,0),Vector3(-0.10,0.67,0),Vector3(0,0.23,0),Vector3(0,0.02,0)] if kind=="spring_rider" else [Vector3(-0.589,0.34,0),Vector3(0.589,0.34,0),Vector3(0,2.10,0)])
 			for local: Vector3 in cached.feet:
 				probes.append(local+Vector3.UP*0.03)
 				var foot: Vector3 = placement*local

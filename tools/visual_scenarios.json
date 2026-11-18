@@ -1695,6 +1695,56 @@
         7209727.6,
         -0.586
       ]
+    },
+    {
+      "id": "vqa_spring_rider_glb_day",
+      "description": "VQA-031 Grab3D Spring Rider in a mapped Oulu playground",
+      "why": "Mapped Oulu playground OSM way 893436783 (leisure=playground, access=private). Normal loaded server equipment output contains [427509.0,7209732.5,spring_rider,-0.586], confirmed by a world probe. No equipment is injected. Existing sourced Oulu on-road taxi pose and an eye camera inspect the actual generated rider. Readiness requires all 17,858 GLB triangles/two materials in final visible batches, grounded plate and unobscured ladybug seat, handles and spring under normal map/weather readiness.",
+      "city": "Oulu",
+      "pose": [
+        427897.3,
+        7210634.9,
+        2.555
+      ],
+      "camera_at": [
+        427509.0,
+        7209732.5
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 3,
+      "view": "3d",
+      "requires": {},
+      "measure_s": 1,
+      "server_args": [
+        "--no-auto-fetch",
+        "--no-terrain-dem80"
+      ],
+      "isolated_settings": true,
+      "camera": "eye",
+      "eye": {
+        "at": [
+          427511.5,
+          7209730.4
+        ],
+        "height": 0.5,
+        "yaw": -0.1120671711316703
+      },
+      "box_km": 2.8,
+      "spring_rider_target": [
+        427509.0,
+        7209732.5,
+        -0.586
+      ]
     }
 ]
 }
