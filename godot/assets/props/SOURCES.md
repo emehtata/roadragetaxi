@@ -21,3 +21,11 @@ SHA-256: `ada2534de7aacd5253ce5fa4b3db1c9107cec3bd9f904243a8b192a90c64c1fe`.
 [Spring Rider](https://grab3d.com/models/city/spring-rider/), Grab3D Cozy Playground & Gym Kit. Downloaded 2026-11-18 from https://grab3d.com/dl/spring-rider/spring-rider.glb, under CC0 1.0 public domain. Full legal text is retained in `CC0-1.0.txt`; hash, measured bounds and static runtime transforms are in `spring_rider.json`. The source GLB bytes are unchanged. Godot extracts the embedded JPG textures during import.
 
 The model is uniformly scaled to 0.8 m height within the server's existing 0.8 m radial equipment clearance, ground centred and rotated +90 degrees around Y so the ladybug faces local +X. The separate ladybug/spring and base child transforms are retained in the static material batches.
+
+## Climbing Frame
+
+- Source: Grab3D, Cozy Playground & Gym Kit — https://grab3d.com/models/city/climbing-frame/
+- Exact Light GLB download: https://grab3d.com/dl/climbing-frame/climbing-frame-light.glb (2026-11-18).
+- License: CC0 1.0 public domain; retained full legal text in `CC0-1.0.txt`.
+- Unchanged source hash, bounds, uniform fit and provenance: `climbing_frame.json`. Light has 13,734 triangles, one PBR material and 1K textures; normal map is absent in the offered Light source. Frame, net, wall, ladder and monkey bars are retained; no source edits.
+- Runtime front wall faces local +Z; ground-centred source is uniformly scaled by 0.729927036516 to 1.666423 × 1.600000 × 1.333177 m.

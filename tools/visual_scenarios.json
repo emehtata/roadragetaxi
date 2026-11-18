@@ -1745,6 +1745,56 @@
         7209732.5,
         -0.586
       ]
+    },
+    {
+      "id": "vqa_climbing_frame_glb_day",
+      "description": "VQA-032 Grab3D Light Climbing Frame in a mapped Oulu playground",
+      "why": "Mapped Oulu playground OSM way 893436783 has normal authoritative equipment row [427513.5,7209733.0,climbing_frame,-0.586], confirmed in the loaded-map probe. No equipment is injected. Existing sourced Oulu road taxi pose plus eye camera inspects its frame, wall, net, ladder and monkey bars. Readiness requires all 13,734 Light GLB triangles/one material in final visible batches, grounded supports and unobscured structure under normal map/weather checks.",
+      "city": "Oulu",
+      "pose": [
+        427897.3,
+        7210634.9,
+        2.555
+      ],
+      "camera_at": [
+        427513.5,
+        7209733.0
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 3,
+      "view": "3d",
+      "requires": {},
+      "measure_s": 1,
+      "server_args": [
+        "--no-auto-fetch",
+        "--no-terrain-dem80"
+      ],
+      "isolated_settings": true,
+      "camera": "eye",
+      "eye": {
+        "at": [
+          427514.62,
+          7209727.46
+        ],
+        "height": 0.85,
+        "yaw": -0.7847262287849552
+      },
+      "box_km": 2.8,
+      "climbing_frame_target": [
+        427513.5,
+        7209733.0,
+        -0.586
+      ]
     }
 ]
 }

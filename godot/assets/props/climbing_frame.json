@@ -1,0 +1,40 @@
+{
+  "file": "climbing_frame.glb",
+  "title": "Climbing Frame",
+  "source": "Grab3D",
+  "kit": "Cozy Playground & Gym",
+  "page_url": "https://grab3d.com/models/city/climbing-frame/",
+  "download_url": "https://grab3d.com/dl/climbing-frame/climbing-frame-light.glb",
+  "download_date": "2026-11-18",
+  "variant": "light",
+  "sha256": "760ec090914d85eaf9c1e8b7a6acdd4abded3eddd29d63f4c3710d0b31859e73",
+  "bytes": 767420,
+  "triangles": 13734,
+  "materials": 1,
+  "source_bounds_min_xyz_m": [
+    -1.1414999663829803,
+    0,
+    -0.9131908118724823
+  ],
+  "source_bounds_max_xyz_m": [
+    1.1414999663829803,
+    2.191999912261963,
+    0.9132615029811859
+  ],
+  "source_dimensions_xyz_m": [
+    2.2829999327659607,
+    2.191999912261963,
+    1.8264523148536682
+  ],
+  "yaw_radians": 0,
+  "uniform_scale": 0.7299270365156777,
+  "rendered_dimensions_xyz_m": [
+    1.6664233752893491,
+    1.6,
+    1.3331769255183374
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source Light GLB bytes unchanged; runtime child-transform merge, ground-centred origin and uniform fit. Front climbing wall faces local +Z before row yaw. Light source includes normals/UV and basecolor/metallic-roughness textures; no normal texture."
+}
