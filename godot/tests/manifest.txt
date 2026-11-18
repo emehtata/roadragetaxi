@@ -39,6 +39,7 @@ res://tests/vehicle_windscreens.gd
 res://tests/train_coach_roof_vent.gd
 res://tests/carousel_glb.gd
 res://tests/amusement_rides_glb.gd
+res://tests/camping_props_glb.gd
 
 [excluded]
 res://tests/snow_visibility_render.gd  # native GPU rendered regression: needs a display

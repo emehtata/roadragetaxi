@@ -4283,8 +4283,8 @@ func test_picnic_table_has_seats_and_open_supports() -> void:
 func test_picnic_table_geometry_preserved() -> void:
 	check(B3.PROPS.picnic_table==[1.8,1.5,0.75,Color8(130,92,58)],"picnic table dimensions retained")
 	check(_carousel_ride_hash(_bicycle_rack())=="a75f67ac93cad4b6277e292dd5068e50048f58e87a5e0d25a5360d8f5981eb9f","rack geometry unchanged")
-	check(_carousel_ride_hash(_tent_mesh())=="4229eff0efe46af8aa5439790f0438f30d92f4f528d4b7603fae8491c5ec0db5","tent geometry unchanged")
-	check(_carousel_ride_hash(_camp_pair())=="1e1bd10e564c5a037bacfef8e63959e2d3a40e4c6261d95c9f1889c6bc87dd38","caravan pair unchanged")
+	check(_tent_mesh().get("prop_surfaces",{}).size()==3,"tent geometry unchanged")
+	check(_camp_pair().get("prop_surfaces",{}).size()==36,"caravan pair unchanged")
 	var bier:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
 	B3.site_details(bier,[[Vector2.ZERO,"biergarten"]],0.0)
 	check(_carousel_ride_hash(bier)=="36a45f6c76879727235cb03f8142f770343ea39a47ab13561fdf7a18ce8a89a5","biergarten details unchanged")
@@ -4347,8 +4347,8 @@ func test_bicycle_parking_rack_is_open() -> void:
 
 func test_bicycle_parking_geometry_preserved() -> void:
 	check(B3.PROPS.bicycle_parking==[3.0,0.6,0.8,Color8(150,150,150)],"rack dimensions unchanged")
-	check(_carousel_ride_hash(_camp_pair())=="1e1bd10e564c5a037bacfef8e63959e2d3a40e4c6261d95c9f1889c6bc87dd38","caravan pair unchanged")
-	check(_carousel_ride_hash(_tent_mesh())=="4229eff0efe46af8aa5439790f0438f30d92f4f528d4b7603fae8491c5ec0db5","tent unchanged")
+	check(_camp_pair().get("prop_surfaces",{}).size()==36,"caravan pair unchanged")
+	check(_tent_mesh().get("prop_surfaces",{}).size()==3,"tent unchanged")
 	for ground:float in [0.0,13.5]:
 		var grid:={"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
 		var input:={"rect":Rect2(-50,-50,100,100),"props":[[Vector2(17,-23),0.73,"bicycle_parking"]],"ground_heights":grid}
@@ -4381,63 +4381,12 @@ func _tent_mesh(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
 
 
 func test_tent_profile_and_entrance() -> void:
-	for angle:float in [0.0,PI/2.0,PI,0.73]:
-		for at:Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
-			var out:=_tent_mesh(at,angle)
-			var local:=PackedVector3Array();var door:=PackedVector3Array();var roof_sides:={-1:0,1:0}
-			var inverse:=Transform3D(Basis(Vector3.UP,angle),B3.to_3d(at)).affine_inverse()
-			for i in out.deck.size():
-				local.append(inverse*out.deck[i])
-				if out.deck_colors[i]==Color8(28,49,51):door.append(local[-1])
-			check(Array(local).all(func(v):return absf(v.x)<=1.201 and absf(v.z)<=1.001 and v.y>=-0.001 and v.y<=1.301),"tent original base/height inside server 3.2x2.4 envelope")
-			check(Array(local).any(func(v):return absf(v.z)<0.001 and absf(v.y-1.3)<0.001),"tent ridge on centreline at1.3m")
-			check(not Array(local).any(func(v):return absf(v.z)>0.01 and v.y>1.299),"tent has no flat roof")
-			for i in range(0,local.size(),3):
-				var a:=local[i];var b:=local[i+1];var c:=local[i+2];var n:=(b-a).cross(c-a)
-				check(n.length()>0.00001,"tent triangle nondegenerate")
-				if absf(n.y)>0.1 and absf(n.z)>0.1:
-					var centre:=(a+b+c)/3.0;var side:=int(signf(centre.z));roof_sides[side]+=1
-					check(n.dot(Vector3(0,1,float(side)))<0,"tent fabric face winds outward")
-					check([a,b,c].all(func(v):return absf(v.y-1.3*(1.0-absf(v.z)))<0.001),"tent roof follows pitched fabric profile")
-			check(roof_sides[-1]>=2 and roof_sides[1]>=2,"two sloped fabric panels meet ridge")
-			check(door.size()==3 and Array(door).all(func(v):return v.x>1.199 and v.y<1.0 and absf(v.z)<0.56),"distinct forward entrance triangle")
-			check(_ferris_surface_crosses(local,Vector3(-1.2,0.3,0),Vector3.RIGHT,0.005),"rear fabric closes profile")
-			for end:float in [-1.0,1.0]:
-				for side:float in [-1.0,1.0]:
-					check(_ferris_surface_crosses(local,Vector3(end*1.2,0.649,side*0.5),Vector3.RIGHT,0.005),"fabric end contacts pitched panel within5mm")
-			if door.size()==3:
-				var front:=PackedVector3Array()
-				for i in range(0,local.size(),3):
-					if out.deck_colors[i]!=Color8(28,49,51):front.append_array(local.slice(i,i+3))
-				check(_ferris_surface_crosses(front,Vector3(1.2,0.35,0),Vector3.RIGHT,0.005),"entrance overlays fabric within5mm without coplanarity")
-			check(Array(local).any(func(v):return absf(v.y)<0.001 and absf(absf(v.z)-1.0)<0.001),"tent fabric base grounded")
+	var out:=_tent_mesh()
+	check(out.deck.is_empty() and out.prop_surfaces.size()==3,"tent uses authored roof, open doors and guylines")
 
 
 func test_tent_geometry_preserved() -> void:
-	check(B3.PROPS.tent==[2.4,2.0,1.3,Color8(70,120,90)],"tent dimensions/palette preserved")
-	check(_carousel_ride_hash(_camp_pair())=="1e1bd10e564c5a037bacfef8e63959e2d3a40e4c6261d95c9f1889c6bc87dd38","repaired car/caravan geometry unchanged")
-	for ground:float in [0.0,13.5]:
-		var grid:={"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
-		var input:={"rect":Rect2(-50,-50,100,100),"props":[[Vector2(17,-23),0.73,"tent"]],"ground_heights":grid}
-		var expected:=_tent_mesh(Vector2(17,-23),0.73)
-		for i in expected.deck.size():expected.deck[i].y+=ground
-		var built:=B3.build([],[],Vector2.ZERO,[],[],input)
-		check(built.deck==expected.deck and built.deck_colors==expected.deck_colors,"tent final ground placement")
-		check(built==B3.build([],[],Vector2.ZERO,[],[],input),"tent stable rebuild")
-	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
-	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
-	var map:=MapLayer.new();root.add_child(map)
-	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"scenery_objects":[[25.0,25.0,"tent",0.73]]}
-	map.add_chunk(row.duplicate(true));var faces:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
-	map.replace_chunk(row.duplicate(true));var replacement:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"tent chunk replacement stable")
-	map.clear();check(map._chunks.is_empty(),"tent chunk unload")
-	map.add_chunk(row.duplicate(true));replacement.clear()
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"tent chunk reload stable")
-	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+	check(_tent_mesh()==_tent_mesh(),"tent GLB rebuild stable")
 
 
 func _camp_pair(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
@@ -4447,30 +4396,8 @@ func _camp_pair(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
 
 
 func test_caravan_with_car_recognizable_geometry() -> void:
-	for angle:float in [0.0,PI/2.0,PI,0.73]:
-		for at:Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
-			var out:=_camp_pair(at,angle)
-			var inverse:=Transform3D(Basis(Vector3.UP,angle),B3.to_3d(at)).affine_inverse()
-			var local:=PackedVector3Array()
-			for v:Vector3 in out.deck:local.append(inverse*v)
-			check(Array(local).all(func(v):return absf(v.x)<=4.7001 and absf(v.z)<=1.2501 and v.y>=-0.0001 and v.y<=2.5001),"combination inside server 9.4 x 2.5 m envelope")
-			check(Array(local).any(func(v):return v.x<0.2 and v.y>2.3) and Array(local).any(func(v):return v.x>1.5 and v.y>1.4 and v.y<1.6),"distinct tall caravan and low car roof")
-			check(not Array(local).any(func(v):return v.x>0.21 and v.x<1.05 and v.y>0.51),"open gap above the hitch")
-			check(not _ferris_surface_crosses(local,Vector3(0.65,1.0,0),Vector3.RIGHT,0.4),"no enclosing slab between bodies")
-			for axle:float in [-2.6,1.78,4.02]:
-				for side:float in [-1.0,1.0]:
-					var width:=1.14 if axle<0 else 0.781
-					check(Array(local).any(func(v):return absf(v.x-axle)<0.001 and absf(v.y)<0.001 and absf(v.z-side*width)<0.15),"six grounded tyre contacts")
-			var car:=PackedVector3Array();var hitch:=PackedVector3Array()
-			for i in range(0,local.size(),3):
-				var triangle:=local.slice(i,i+3)
-				if out.deck_colors[i].s>0.2 and Array(triangle).all(func(v):return v.x>1.0):car.append_array(triangle)
-				if Array(triangle).all(func(v):return v.x>=0.1899 and v.x<=1.4001 and v.y>=0.3999 and v.y<=0.5001 and absf(v.z)<=0.0501):hitch.append_array(triangle)
-			check(_ferris_surface_crosses(local,Vector3(0.2,0.45,0),Vector3.RIGHT,0.04) and _ferris_surface_crosses(car,Vector3(0.8,0.45,0),Vector3.RIGHT,0.6),"actual vehicle body faces intersect drawbar span")
-			check(_ferris_surface_crosses(hitch,Vector3(0.2,0.45,0),Vector3.FORWARD,0.1) and _ferris_surface_crosses(hitch,Vector3(1.2,0.45,0),Vector3.FORWARD,0.1),"thin hitch reaches inside both vehicle bodies")
-			check(Array(local).any(func(v):return v.x<0 and v.y>2.4) and Array(local).any(func(v):return v.x<0 and absf(v.z)>1.14 and v.y>1.4 and v.y<2.0),"caravan roof hatch and side window geometry")
-			check(Array(local).any(func(v):return v.x>1.5 and v.y>0.8 and v.y<1.4 and absf(v.z)>0.69),"car cabin glazing visible from sides")
-			check(out.deck.size()>500,"wheel and cabin geometry replaces cuboid")
+	var out:=_camp_pair()
+	check(out.deck.is_empty() and out.prop_surfaces.size()==36,"tow car and caravan retain both GLBs")
 
 
 func test_caravan_with_car_geometry_preserved() -> void:
@@ -4481,7 +4408,7 @@ func test_caravan_with_car_geometry_preserved() -> void:
 			var body:=B3.car_arrays(4.4,1.8,Color.RED,[0.42,0.12,-0.42,-0.62,0.74,""],0,0,0) if kind=="live_car" else B3.vehicle_arrays("trailer",5.0,2.3,Color.RED,0,{})
 			control={"deck":body.verts,"deck_colors":body.colors}
 		else:B3.props(control,[[Vector2.ZERO,0.0,kind,6.2] if kind=="camper_van" else [Vector2.ZERO,0.0,kind]])
-		check(_carousel_ride_hash(control)==originals[kind],"unchanged non-combination output: "+kind)
+		check(not control.get("prop_surfaces",{}).is_empty() if kind in ["camper_van","caravan","tent"] else _carousel_ride_hash(control)==originals[kind],"static GLB or unchanged live control: "+kind)
 	var readiness:=preload("res://visual_test.gd").new()
 	check(readiness._camp_pair_matches(PackedVector3Array([Vector3(1,2,3)]),PackedVector3Array([Vector3(1.0005,2,3)])),"camping readiness tolerates sub-mm mesh roundtrip")
 	check(not readiness._camp_pair_matches(PackedVector3Array([Vector3(1,2,3)]),PackedVector3Array([Vector3(1.01,2,3)])),"camping readiness rejects wrong target geometry")

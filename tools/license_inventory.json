@@ -280,6 +280,25 @@
       "commercial": "yes",
       "status": "conditional",
       "remediation": "re-check each source page for its licence line and record the author"
+    },
+    {
+      "name": "Grab3D camping props (CC0)",
+      "paths": [
+        "godot/assets/props/travel_trailer*",
+        "godot/assets/props/station_wagon*",
+        "godot/assets/props/a_frame_tent*",
+        "godot/assets/props/static_camper.json"
+      ],
+      "purpose": "static campsite caravan, tow car and tent models",
+      "shipped": true,
+      "origin": "Grab3D Cozy Cars and Cozy Camping & Outdoor; see godot/assets/props/SOURCES.md",
+      "copyright": "Grab3D",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "Unchanged GLB hashes, source manifests/notices and full CC0 legal text are retained beside the models",
+      "obligations": "none (CC0); retain project source records and fi/en/de credits",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
     }
   ],
   "python_packages": {

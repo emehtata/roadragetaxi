@@ -940,8 +940,12 @@ func _check_map(centre: Vector2) -> Array:
 	var carousel_glb := _check_prop_glb("carousel", camera_3d, screen_size, hud, missing) if scenario.has("carousel_target") else {}
 	var swing_ride_glb := _check_prop_glb("swing_carousel", camera_3d, screen_size, hud, missing) if scenario.has("swing_carousel_target") else {}
 	var ferris_wheel_glb := _check_prop_glb("ferris_wheel", camera_3d, screen_size, hud, missing) if scenario.has("ferris_wheel_target") else {}
+	var camping_glb := {}
+	if scenario.get("camping_glb",false):
+		for kind in ["caravan_with_car","caravan","tent","camper_van"]:
+			if scenario.has(kind+"_target"):camping_glb[kind]=_check_prop_glb(kind,camera_3d,screen_size,hud,missing)
 	var camp_pair := {}
-	if scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target"):
+	if not scenario.get("camping_glb",false) and (scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target")):
 		var picnic:=scenario.has("picnic_table_target")
 		var tent:=scenario.has("tent_target")
 		var rack:=scenario.has("bicycle_parking_target")
@@ -1454,6 +1458,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not carousel_glb.is_empty(): _counts["carousel_glb"] = carousel_glb
 	if not swing_ride_glb.is_empty(): _counts["swing_ride_glb"] = swing_ride_glb
 	if not ferris_wheel_glb.is_empty(): _counts["ferris_wheel_glb"] = ferris_wheel_glb
+	if not camping_glb.is_empty(): _counts["camping_glb"] = camping_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
@@ -1774,6 +1779,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if camera == null: return {}
 	var target: Array = scenario[kind+"_target"]
 	var ride := kind in ["carousel","swing_carousel","ferris_wheel"]
+	var camping := kind in ["caravan_with_car","caravan","tent","camper_van"]
 	var layer = layer_3d_view()
 	var triangles := 17858 if kind == "spring_rider" else (15988 if kind == "slide" else 19740)
 	var material_count := 2 if kind == "spring_rider" else (1 if kind == "slide" else 3)
@@ -1782,6 +1788,9 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if kind == "carousel": triangles = 21956; material_count = 3
 	if kind == "swing_carousel": triangles = 18532; material_count = 3
 	if kind == "ferris_wheel": triangles = 39652; material_count = 3
+	if camping:
+		triangles={"caravan_with_car":38695,"caravan":19387,"tent":14428,"camper_van":45436}[kind]
+		material_count={"caravan_with_car":36,"caravan":18,"tent":3,"camper_van":9}[kind]
 	for chunk in main.map_layer._chunks.values():
 		for row: Array in chunk._data.get("attractions" if ride else "scenery_objects", []):
 			var at := Vector2.ZERO
@@ -1800,12 +1809,15 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 				if row[2] != kind or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1])) > 0.01: continue
 				if absf(angle_difference(row[3],target[2])) > 0.001: missing.append(kind+" heading differs from target")
 				at = MapMath.point(chunk._origin,row[0],row[1]);angle=float(row[3])
+				if kind=="camper_van":
+					if row.size()<5 or target.size()<4 or absf(float(row[4])-float(target[3]))>0.001:missing.append("camper streamed length differs from target");continue
+					scale=Buildings3D.camping_scale(kind,float(row[4]))
 			if chunk._building_task >= 0 or chunk.meshes_3d.is_empty():
 				missing.append(kind+" chunk meshes still building")
 				return {}
 			var id := "%s/%s/%s/%s"%[chunk.get_instance_id(),kind,chunk._mesh_build,chunk.meshes_3d[0].get_instance_id()]
 			if not _prop_glb_geometry_cache.has(id):
-				var expected := Buildings3D.build([],[],Vector2.ZERO,[],[],{"attractions":[[kind,loop]] if ride else [],"props":[] if ride else [[at,angle,kind]],"ground_heights":chunk.ground_heights,"rect":chunk._bounds_rect})
+				var expected := Buildings3D.build([],[],Vector2.ZERO,[],[],{"attractions":[[kind,loop]] if ride else [],"props":[] if ride else [[at,angle,kind,float(row[4]) if kind=="camper_van" else Buildings3D.PROPS[kind][0]]],"ground_heights":chunk.ground_heights,"rect":chunk._bounds_rect})
 				var nodes := []
 				var faces := PackedVector3Array()
 				var matched := true
@@ -1817,7 +1829,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 							actual.append_array(mesh.mesh.get_faces());nodes.append(mesh)
 					matched = matched and _swing_faces_present(actual,part.verts)
 					faces.append_array(part.verts)
-					if ride:
+					if ride or camping:
 						var triangles_mesh := TriangleMesh.new();triangles_mesh.create_from_faces(part.verts);own_geometry[part.material]=triangles_mesh
 				var bounds := AABB(faces[0],Vector3.ZERO)
 				for v: Vector3 in faces: bounds=bounds.expand(v)
@@ -1851,10 +1863,14 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 			if kind == "carousel": probes = [Vector3(0,6.0,0),Vector3(-2.2,1.3,0),Vector3(2.2,1.3,0),Vector3(0,0.3,-2.0)]
 			if kind == "swing_carousel": probes = [Vector3(0,7.4,0),Vector3(-2.8,2.5,0),Vector3(2.8,2.5,0),Vector3(0,0.1,0)]
 			if kind == "ferris_wheel": probes = [Vector3(0,10,0),Vector3(-4.5,6,0),Vector3(4.5,6,0),Vector3(0,7,0),Vector3(1,0.1,1)]
+			if kind=="tent":probes=[Vector3(0.6,0.4,0),Vector3(0,0.8,0),Vector3(0,0.2,0.7)]
+			if kind=="caravan_with_car":probes=[Vector3(-2.0,1.6,0),Vector3(3.0,0.9,0),Vector3(0.63,0.4,0)]
+			if kind=="caravan":probes=[Vector3(0,1.8,0),Vector3(2.5,0.5,0),Vector3(-0.4,0.2,0.8)]
+			if kind=="camper_van":probes=[Vector3(1.4,1.0,0),Vector3(-1.0,1.8,0),Vector3(1.3,0.1,0.8)]
 			if kind == "seesaw": probes = [Vector3(-0.60,0.18,0),Vector3(0.60,0.45,0),Vector3(0,0.15,0),Vector3(0,0.29,0)]
 			var foot_probes := {}
 			for local: Vector3 in cached.feet:
-				if ride:foot_probes[Vector2(signf(local.x),signf(local.z))]=local+Vector3.UP*0.03
+				if ride or camping:foot_probes[Vector2(signf(local.x),signf(local.z))]=local+Vector3.UP*0.03
 				else:probes.append(local+Vector3.UP*0.03)
 				var foot: Vector3 = placement*local
 				foot.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
@@ -1868,21 +1884,22 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 				point = frame.global_transform*point
 				for other in main.map_layer._chunks.values():
 					for solid: MeshInstance3D in other.meshes_3d:
-						if not solid.is_visible_in_tree() or solid.mesh==null or solid.layers & camera.cull_mask==0 or (not ride and solid in cached.nodes): continue
+						if not solid.is_visible_in_tree() or solid.mesh==null or solid.layers & camera.cull_mask==0 or (not ride and not camping and solid in cached.nodes): continue
 						var inverse := solid.global_transform.affine_inverse()
 						if solid.get_aabb().intersects_segment(inverse*camera.global_position,inverse*point) == null: continue
 						if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
 						var hit:Dictionary=_felled_occluders[solid.mesh].intersect_segment(inverse*camera.global_position,inverse*point)
 						if hit.is_empty():continue
 						# Ignore only the target's exact surfaces, including copies in adjacent chunks.
-						if ride and cached.own_geometry.has(solid.material_override):
+						if (ride or camping) and cached.own_geometry.has(solid.material_override):
 							var own_inverse:=frame.global_transform.affine_inverse()
 							var world_hit:Vector3=solid.global_transform*hit.position
 							var ray:Vector3=(point-camera.global_position).normalized()*0.02
 							var own_hit:Dictionary=cached.own_geometry[solid.material_override].intersect_segment(own_inverse*(world_hit-ray),own_inverse*(world_hit+ray))
-							if not own_hit.is_empty() and (frame.global_transform*own_hit.position).distance_to(world_hit)<0.01:continue
+							# Layered camping body faces can pick different hits within the 2 cm verification segment.
+							if not own_hit.is_empty() and (frame.global_transform*own_hit.position).distance_to(world_hit)<(0.025 if camping else 0.01):continue
 						missing.append(kind+" feature "+str(local)+" hidden by "+str(solid.get_meta("prop_material",solid.material_override.shader.resource_path if solid.material_override is ShaderMaterial else solid.material_override)))
-			return {"position":[target[0],target[1]],"angle":angle,"triangles":cached.vertex_count/3,"materials":material_count,"matched_final_geometry":true,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"foot_error_m":foot_error,"osm_playground_way":893436783 if not ride else 0,"osm_theme_park_relation":1300537 if ride else 0}
+			return {"position":[target[0],target[1]],"angle":angle,"triangles":cached.vertex_count/3,"materials":material_count,"matched_final_geometry":true,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"foot_error_m":foot_error,"osm_playground_way":893436783 if not ride and not camping else 0,"osm_camp_pitch":scenario.get("osm_camp_pitch",0),"streamed_length_m":float(target[3]) if kind=="camper_van" else 0,"osm_theme_park_relation":1300537 if ride else 0}
 	missing.append("expected generated "+kind+" in mapped playground not loaded")
 	return {}
 

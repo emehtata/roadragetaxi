@@ -4,6 +4,10 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"credits_travel_trailer": "Matkailuvaunu: Travel Trailer — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/travel-trailer/",
+	"credits_station_wagon": "Farmariauto: Station Wagon — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/station-wagon/",
+	"credits_a_frame_tent": "Harjateltta: A-Frame Tent — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/props/a-frame-tent/",
+	"credits_static_camper": "Matkailuauto: Camper van — 3DAssets.dev. CC0 (public domain): https://3dassets.dev/assets/car-park-and-road-vehicle-fleet-camper-van-40d26940",
 	"credits_swing": "Keinu: Swing Set — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/toys/swing-set/",
 	"credits_slide": "Liukumäki: Playground Slide — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/city/playground-slide/",
 	"credits_spring_rider": "Jousikeinu: Spring Rider — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/city/spring-rider/",
@@ -271,6 +275,10 @@ const FI := {
 }
 
 const EN := {
+	"credits_travel_trailer": "Travel trailer: Travel Trailer — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/travel-trailer/",
+	"credits_station_wagon": "Station wagon: Station Wagon — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/station-wagon/",
+	"credits_a_frame_tent": "A-frame tent: A-Frame Tent — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/props/a-frame-tent/",
+	"credits_static_camper": "Camper van: Camper van — 3DAssets.dev. CC0 (public domain): https://3dassets.dev/assets/car-park-and-road-vehicle-fleet-camper-van-40d26940",
 	"credits_swing": "Swing: Swing Set — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/toys/swing-set/",
 	"credits_slide": "Slide: Playground Slide — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/city/playground-slide/",
 	"credits_spring_rider": "Spring rider: Spring Rider — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/city/spring-rider/",
@@ -541,6 +549,10 @@ const EN := {
 }
 
 const DE := {
+	"credits_travel_trailer": "Wohnwagen: Travel Trailer — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/travel-trailer/",
+	"credits_station_wagon": "Kombi: Station Wagon — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/station-wagon/",
+	"credits_a_frame_tent": "Firstzelt: A-Frame Tent — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/props/a-frame-tent/",
+	"credits_static_camper": "Wohnmobil: Camper van — 3DAssets.dev. CC0 (public domain): https://3dassets.dev/assets/car-park-and-road-vehicle-fleet-camper-van-40d26940",
 	"credits_swing": "Schaukel: Swing Set — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (Public Domain): https://grab3d.com/models/toys/swing-set/",
 	"credits_slide": "Rutsche: Playground Slide — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (Public Domain): https://grab3d.com/models/city/playground-slide/",
 	"credits_spring_rider": "Federwippe: Spring Rider — Grab3D, Cozy Playground & Gym Kit. CC0 1.0 (public domain): https://grab3d.com/models/city/spring-rider/",

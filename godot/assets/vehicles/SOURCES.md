@@ -66,3 +66,5 @@ reproduce it; an already repaired file is unchanged. All non-HVAC vertex data,
 normals, UVs, indices, textures, materials and node transforms are preserved.
 This is local processing of the same CC0 source above, with no new data source.
 See [correction evidence](../../../docs/visual-quality-corrections/train-coach-roof-vent/README.md).
+
+Static camping props also reuse `camper_van.glb` (45,436 triangles, nine materials; source X/Y/Z 2.154150 × 2.214401 × 5.042000 m). Its complete mesh is ground-centred, turned +90° about Y to local +X, and uniformly fit to the positive streamed length, 2.5 m width and 2.9 m height. Driven vehicle resources/transforms remain unchanged. Finnish, English and German credits identify the original 3DAssets.dev CC0 source.

@@ -1,0 +1,47 @@
+{
+ "slug": "travel-trailer",
+ "triangles": 19387,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "travel-trailer.glb",
+   "bytes": 1245040
+  },
+  "blend": {
+   "name": "travel-trailer.blend",
+   "bytes": 1077258
+  },
+  "fbx": {
+   "name": "travel-trailer.fbx",
+   "bytes": 2275084
+  },
+  "obj": {
+   "name": "travel-trailer-obj.zip",
+   "bytes": 1142424
+  },
+  "usdz": {
+   "name": "travel-trailer.usdz",
+   "bytes": 1939776
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "2.346 x 6.138 x 2.640",
+  "triangles": 19387,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "travel trailer (caravan with tandem axle), approx. 6.0 x 2.2 x 2.6 m (L x W x H incl. drawbar and roof dome), wheel diameter 0.66 m",
+  "notes": "front (drawbar) faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow body with transparent windows, dinette with table, kitchen block and bed inside; entry door is part of the body; ball coupling, jockey wheel and gas locker on the A-frame drawbar; no brand, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

@@ -1,0 +1,17 @@
+{
+  "file": "../vehicles/camper_van.glb",
+  "title": "Camper van",
+  "source": "3DAssets.dev",
+  "page_url": "https://3dassets.dev/assets/car-park-and-road-vehicle-fleet-camper-van-40d26940",
+  "sha256": "8f276bb5c75f43227cc7e946c5a654f2c20ac9a08daa9b99a15e044daf8bb90d",
+  "triangles": 45436,
+  "materials": 9,
+  "source_dimensions_xyz_m": [
+    2.15415,
+    2.214401,
+    5.042
+  ],
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Existing game GLB unchanged; static reuse only. Ground-centred, rotated +90 degrees about Y. Uniform scale min(row_length / 5.042, 2.5 / 2.15415, 2.9 / 2.214401)."
+}

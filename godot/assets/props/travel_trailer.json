@@ -1,0 +1,35 @@
+{
+  "file": "travel_trailer.glb",
+  "title": "Travel Trailer",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/travel-trailer/",
+  "download_url": "https://grab3d.com/dl/travel-trailer/travel-trailer.glb",
+  "download_date": "2026-11-18",
+  "sha256": "32a01e30e625528b981e54cbf1388000c3d64d738e8c8be65da5daa9da98ef03",
+  "bytes": 1245040,
+  "triangles": 19387,
+  "materials": 18,
+  "source_dimensions_xyz_m": [
+    2.346,
+    2.64,
+    6.138197
+  ],
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB unchanged. Baked child transforms; centred ground footprint; +90-degree Y rotation faces local +X. Uniform scale retains source proportions. Pair coupler overlaps rear bumper by 2 cm before common fit; full bounds fit existing camping envelope. Static pose.",
+  "standalone_uniform_scale": 0.9469696969696969,
+  "standalone_rendered_dimensions_xyz_m": [
+    5.812686553030303,
+    2.5,
+    2.221590909090909
+  ],
+  "combination_uniform_scale": 0.8718321422622302,
+  "combination_rendered_dimensions_xyz_m": [
+    9.4,
+    2.301636855572288,
+    2.045318205747192
+  ],
+  "coupler_overlap_before_scale_m": 0.02,
+  "tow_car_source_center_offset_x_m": 5.380946
+}

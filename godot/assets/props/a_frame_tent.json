@@ -1,0 +1,27 @@
+{
+  "file": "a_frame_tent.glb",
+  "title": "A-Frame Tent",
+  "source": "Grab3D",
+  "kit": "Cozy Camping & Outdoor",
+  "page_url": "https://grab3d.com/models/props/a-frame-tent/",
+  "download_url": "https://grab3d.com/dl/a-frame-tent/a-frame-tent.glb",
+  "download_date": "2026-11-18",
+  "sha256": "8db0670efdfe1c562b6c5f11eceedc908e9d688c85da333a545e73c7fe1e7928",
+  "bytes": 1521212,
+  "triangles": 14428,
+  "materials": 3,
+  "source_dimensions_xyz_m": [
+    3.11326,
+    1.189751,
+    3.87326
+  ],
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB unchanged. Baked child transforms; centred ground footprint; +90-degree Y rotation faces local +X. Uniform scale retains source proportions. Pair coupler overlaps rear bumper by 2 cm before common fit; full bounds fit existing camping envelope. Static pose.",
+  "uniform_scale": 0.7708961024777885,
+  "rendered_dimensions_xyz_m": [
+    2.9858810378831193,
+    0.9171744088190513,
+    2.4
+  ]
+}

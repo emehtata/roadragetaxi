@@ -1,0 +1,47 @@
+{
+ "slug": "station-wagon",
+ "triangles": 19308,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "station-wagon.glb",
+   "bytes": 1220520
+  },
+  "blend": {
+   "name": "station-wagon.blend",
+   "bytes": 1067990
+  },
+  "fbx": {
+   "name": "station-wagon.fbx",
+   "bytes": 2274140
+  },
+  "obj": {
+   "name": "station-wagon-obj.zip",
+   "bytes": 1152687
+  },
+  "usdz": {
+   "name": "station-wagon.usdz",
+   "bytes": 1896269
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.896 x 4.664 x 1.647",
+  "triangles": 19308,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "station wagon (estate car), approx. 4.8 x 1.8 x 1.6 m (L x W x H incl. roof rails), wheel diameter 0.68 m",
+  "notes": "front faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, seats, rear bench and steering wheel inside; no brand, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

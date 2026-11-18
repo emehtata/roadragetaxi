@@ -3202,6 +3202,11 @@ const WIRE_M := 8.6  # the crossarm's height: where the wires hang
 const WIRE_SPAN_MAX_M := 150.0
 
 
+const TRAVEL_TRAILER_SCENE := preload("res://assets/props/travel_trailer.glb")
+const STATION_WAGON_SCENE := preload("res://assets/props/station_wagon.glb")
+const TENT_SCENE := preload("res://assets/props/a_frame_tent.glb")
+const STATIC_CAMPER_SCENE := preload("res://assets/vehicles/camper_van.glb")
+
 const SWING_SCENE := preload("res://assets/props/swing_set.glb")
 const SLIDE_SCENE := preload("res://assets/props/playground_slide.glb")
 const SPRING_RIDER_SCENE := preload("res://assets/props/spring_rider.glb")
@@ -3219,6 +3224,9 @@ static func swing_surfaces() -> Dictionary:
 
 static func prop_model_surfaces(kind: String) -> Dictionary:
 	if _prop_model_surfaces.has(kind):
+		return _prop_model_surfaces[kind]
+	if kind in ["caravan_with_car", "caravan", "tent", "camper_van"]:
+		_prop_model_surfaces[kind] = _camping_model_surfaces(kind)
 		return _prop_model_surfaces[kind]
 	var slide := kind == "slide"
 	var spring_rider := kind == "spring_rider"
@@ -3245,6 +3253,54 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 		surfaces[kind+":"+str(surface)] = part
 	_prop_model_surfaces[kind] = surfaces
 	return surfaces
+
+
+static func camping_scale(kind: String, length: float) -> float:
+	if kind != "camper_van": return 1.0
+	var bounds := merged_model("static_camper_van", STATIC_CAMPER_SCENE).get_aabb()
+	return minf(length / bounds.size.z, minf(2.5 / bounds.size.x, 2.9 / bounds.size.y))
+
+
+static func _camping_model_surfaces(kind: String) -> Dictionary:
+	var files := ["travel_trailer", "station_wagon"] if kind == "caravan_with_car" else ["travel_trailer" if kind == "caravan" else "a_frame_tent" if kind == "tent" else "camper_van"]
+	var scenes := {"travel_trailer":TRAVEL_TRAILER_SCENE, "station_wagon":STATION_WAGON_SCENE, "a_frame_tent":TENT_SCENE, "camper_van":STATIC_CAMPER_SCENE}
+	var meshes := []
+	var bounds := AABB()
+	var car_offset := 0.0
+	for file: String in files:
+		var mesh := merged_model("static_"+file, scenes[file])
+		meshes.append(mesh)
+		var box := mesh.get_aabb()
+		var oriented := AABB(Vector3(-box.size.z/2,0,-box.size.x/2), Vector3(box.size.z,box.size.y,box.size.x))
+		if file == "station_wagon":
+			# The authored coupler overlaps the rear bumper by 2 cm at towing height.
+			car_offset = meshes[0].get_aabb().size.z/2 + box.size.z/2 - 0.02
+			oriented.position.x += car_offset
+		bounds = oriented if meshes.size()==1 else bounds.merge(oriented)
+	var envelope := Vector3(9.4,2.5,2.5) if kind=="caravan_with_car" else Vector3(6.2,2.5,2.5) if kind=="caravan" else Vector3(3.2,1.3,2.4)
+	var scale := 1.0 if kind=="camper_van" else minf(envelope.x/bounds.size.x,minf(envelope.y/bounds.size.y,envelope.z/bounds.size.z))
+	var centre := Vector3(bounds.get_center().x,0,bounds.get_center().z)
+	var basis := Basis(Vector3.UP, PI/2)
+	var result := {}
+	for n in meshes.size():
+		var mesh: ArrayMesh = meshes[n]
+		var source_box := mesh.get_aabb()
+		var source_centre := Vector3(source_box.get_center().x,source_box.position.y,source_box.get_center().z)
+		for surface in mesh.get_surface_count():
+			var arrays := mesh.surface_get_arrays(surface)
+			var part := {"verts":PackedVector3Array(),"normals":PackedVector3Array(),"uv":PackedVector2Array(),"tangents":PackedFloat32Array(),"material":mesh.surface_get_material(surface)}
+			for index: int in arrays[Mesh.ARRAY_INDEX]:
+				var point: Vector3 = basis*(arrays[Mesh.ARRAY_VERTEX][index]-source_centre)
+				if n==1:point.x+=car_offset
+				part.verts.append((point-centre)*scale)
+				part.normals.append(basis*arrays[Mesh.ARRAY_NORMAL][index])
+				part.uv.append(arrays[Mesh.ARRAY_TEX_UV][index] if arrays[Mesh.ARRAY_TEX_UV]!=null else Vector2.ZERO)
+				var source_tangents = arrays[Mesh.ARRAY_TANGENT]
+				var tangent: Vector3 = basis*Vector3(source_tangents[index*4],source_tangents[index*4+1],source_tangents[index*4+2]) if source_tangents!=null else part.normals[-1].cross(Vector3.FORWARD).normalized()
+				if tangent.length_squared()<0.1:tangent=Vector3.RIGHT
+				part.tangents.append_array(PackedFloat32Array([tangent.x,tangent.y,tangent.z,source_tangents[index*4+3] if source_tangents!=null else 1.0]))
+			result[kind+":"+str(n)+":"+str(surface)]=part
+	return result
 
 
 static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String, scale := 1.0) -> void:
@@ -3282,34 +3338,8 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var along: Vector2 = Vector2(cos(row[1]), -sin(row[1])) * length * 0.5
 		var across: Vector2 = along.orthogonal().normalized() * float(look[1]) * 0.5
 		var at: Vector2 = row[0]
-		if row[2] == "caravan_with_car":
-			var paint := Color8(76, 117, 155) if posmod(hash(at), 2) == 0 else Color8(169, 66, 54)
-			var body := car_arrays(3.5, 1.7, paint, [0.42, 0.12, -0.42, -0.62, 0.74, ""], 0, 0, 0)
-			for i in body.verts.size(): body.verts[i].x += 2.9
-			for side: float in [-1.0, 1.0]:
-				_wheel(body, -2.6, side * 1.14, 0.3, 0.2, Color8(28, 28, 28), 0)
-			_car_box(body, -4.6, 0.2, -1.15, 1.15, 0.35, 2.4, look[3])
-			_car_box(body, -3.5, -2.7, -0.4, 0.4, 2.4, 2.5, Color8(120, 150, 160))
-			for side: float in [-1.0, 1.0]:
-				_car_box(body, -3.4, -2.2, side * 1.15 - 0.01, side * 1.15 + 0.01, 1.35, 1.95, CAR_GLASS)
-			_car_box(body, 0.19, 1.4, -0.05, 0.05, 0.4, 0.5, Color8(165, 168, 162))
-			var placement := Transform3D(Basis(Vector3.UP, float(row[1])), to_3d(at))
-			for i in body.verts.size():
-				out["deck"].append(placement * body.verts[i])
-				out["deck_colors"].append(body.colors[i])
-			continue
-		if row[2] == "tent":
-			var body := _empty_arrays()
-			for side: float in [-1.0, 1.0]:
-				_quad(body, Vector3(-length*0.5,0,side), Vector3(length*0.5,0,side), Vector3(length*0.5,1.3,0), Vector3(-length*0.5,1.3,0), look[3], Vector3(0,1,side))
-			for end: float in [-1.0, 1.0]:
-				var x := end * (length*0.5 - (0.002 if end > 0 else 0.0))
-				_tri(body, Vector3(x,0,-1), Vector3(x,0,1), Vector3(x,1.3,0), look[3], Vector3(end,0,0))
-			_tri(body, Vector3(length*0.5,0.03,-0.55), Vector3(length*0.5,0.03,0.55), Vector3(length*0.5,0.95,0), Color8(28,49,51), Vector3.RIGHT)
-			var placement := Transform3D(Basis(Vector3.UP, float(row[1])), to_3d(at))
-			for i in body.verts.size():
-				out["deck"].append(placement * body.verts[i])
-				out["deck_colors"].append(body.colors[i])
+		if row[2] in ["caravan_with_car", "caravan", "tent", "camper_van"]:
+			_model_prop(out, at, float(row[1]), row[2], camping_scale(row[2], length))
 			continue
 		if row[2] == "bicycle_parking":
 			var u := along.normalized() * 0.03

@@ -1,0 +1,21 @@
+{
+  "file": "station_wagon.glb",
+  "title": "Station Wagon",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/station-wagon/",
+  "download_url": "https://grab3d.com/dl/station-wagon/station-wagon.glb",
+  "download_date": "2026-11-18",
+  "sha256": "e8e5c05ce2ddb21d86fbee9c4ab5bfcf9ef0ed40d4bfd41862cf60b0a7eb51ef",
+  "bytes": 1220520,
+  "triangles": 19308,
+  "materials": 18,
+  "source_dimensions_xyz_m": [
+    1.895904,
+    1.647,
+    4.663695
+  ],
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB unchanged. Baked child transforms; centred ground footprint; +90-degree Y rotation faces local +X. Uniform scale retains source proportions. Pair coupler overlaps rear bumper by 2 cm before common fit; full bounds fit existing camping envelope. Static pose."
+}
