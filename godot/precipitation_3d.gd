@@ -119,15 +119,17 @@ func _init() -> void:
 	add_child(collision)
 
 
-func set_weather(kind: String, intensity: float, wind_mps: Vector2) -> void:
+## Returns true when the particles restarted (kind or drop_count() changed).
+func set_weather(kind: String, intensity: float, wind_mps: Vector2) -> bool:
 	visible = kind != ""
 	if not visible:
 		particles.emitting = false
 		_kind = ""
-		return
+		return false
 	_process_material.set_shader_parameter("wind", wind_mps * float(WIND_FACTOR.get(kind, 0.5)))
-	if kind == _kind and is_equal_approx(intensity, _intensity):
-		return
+	if kind == _kind and drop_count(kind, intensity) == drop_count(kind, _intensity):
+		_intensity = intensity  # the weather blend drifts every frame; a restart re-runs the whole preprocess
+		return false
 	_kind = kind
 	_intensity = intensity
 	var speed: float = BASE_SPEED.get(kind, 6.5)
@@ -142,6 +144,7 @@ func set_weather(kind: String, intensity: float, wind_mps: Vector2) -> void:
 	_update_volume()
 	particles.emitting = true
 	particles.restart()  # preprocess with initialized uniforms and the current terrain-relative origin
+	return true
 
 
 ## Follow the camera: the emitter box covers its view, the collision box snaps to a grid.

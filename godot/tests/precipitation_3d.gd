@@ -33,6 +33,8 @@ func run() -> void:
 	test_overlay_hidden_when_3d_active()
 	test_snow_volume_follows_ground_height()
 	test_snow_reentry_initialization()
+	test_intensity_drift_does_not_restart()
+	test_kind_change_restarts_once()
 
 
 func test_fall_velocity_down_and_with_wind() -> void:
@@ -133,4 +135,27 @@ func test_snow_reentry_initialization() -> void:
 	var lifetime: float = p.particles.lifetime
 	p.set_weather("snow", 0.7, Vector2.ZERO)
 	check(p.particles.amount == 5600 and p.particles.lifetime == lifetime and p.particles.draw_pass_1.material == material, "unchanged weather retains particle allocation/material")
+	p.free()
+
+
+func test_intensity_drift_does_not_restart() -> void:
+	var p: Node3D = P3.new()
+	host.add_child(p)
+	p.set_weather("snow", 0.7, Vector2.ZERO)
+	var restarts := 0
+	for step in 60:  # 0.001 steps change drop_count (8000 * 0.001 = 8); drift below one drop
+		if p.set_weather("snow", 0.7 + 0.000001 * (step + 1), Vector2.ZERO): restarts += 1
+	check(restarts == 0, "intensity drift within one drop count restarts 0 times (got %d)" % restarts)
+	check(p.set_weather("snow", 0.701, Vector2.ZERO) and p.particles.amount == 5608, "drop count change updates amount and restarts")
+	p.free()
+
+
+func test_kind_change_restarts_once() -> void:
+	var p: Node3D = P3.new()
+	host.add_child(p)
+	var restarts := 0
+	for kind in ["", "snow", "snow", "rain", "rain"]:
+		if p.set_weather(kind, 0.7, Vector2.ZERO): restarts += 1
+	check(restarts == 2, "each kind change restarts once (got %d)" % restarts)
+	check(p.particles.preprocess == p.particles.lifetime, "kind change keeps a full sky at once")
 	p.free()
