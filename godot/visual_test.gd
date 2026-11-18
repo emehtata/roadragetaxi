@@ -933,6 +933,7 @@ func _check_map(centre: Vector2) -> Array:
 	var slide_glb := _check_prop_glb("slide", camera_3d, screen_size, hud, missing) if scenario.has("slide_target") else {}
 	var spring_rider_glb := _check_prop_glb("spring_rider", camera_3d, screen_size, hud, missing) if scenario.has("spring_rider_target") else {}
 	var climbing_frame_glb := _check_prop_glb("climbing_frame", camera_3d, screen_size, hud, missing) if scenario.has("climbing_frame_target") else {}
+	var seesaw_glb := _check_prop_glb("seesaw", camera_3d, screen_size, hud, missing) if scenario.has("seesaw_target") else {}
 	var camp_pair := {}
 	if scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target"):
 		var picnic:=scenario.has("picnic_table_target")
@@ -1443,6 +1444,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not slide_glb.is_empty(): _counts["slide_glb"] = slide_glb
 	if not spring_rider_glb.is_empty(): _counts["spring_rider_glb"] = spring_rider_glb
 	if not climbing_frame_glb.is_empty(): _counts["climbing_frame_glb"] = climbing_frame_glb
+	if not seesaw_glb.is_empty(): _counts["seesaw_glb"] = seesaw_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not windscreen.is_empty():
@@ -1761,6 +1763,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	var triangles := 17858 if kind == "spring_rider" else (15988 if kind == "slide" else 19740)
 	var material_count := 2 if kind == "spring_rider" else (1 if kind == "slide" else 3)
 	if kind == "climbing_frame": triangles = 13734; material_count = 1
+	if kind == "seesaw": triangles = 10940; material_count = 2
 	for chunk in main.map_layer._chunks.values():
 		for row: Array in chunk._data.get("scenery_objects", []):
 			if row[2] != kind or Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1])) > 0.01: continue
@@ -1811,6 +1814,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 			var foot_error := 0.0
 			var probes := [Vector3(-0.65,1.2,0),Vector3(-1.2,0.5,0),Vector3(0.5,0.55,0),Vector3(1.3,0.2,0)] if kind=="slide" else ([Vector3(0.20,0.57,0),Vector3(-0.10,0.67,0),Vector3(0,0.23,0),Vector3(0,0.02,0)] if kind=="spring_rider" else [Vector3(-0.589,0.34,0),Vector3(0.589,0.34,0),Vector3(0,2.10,0)])
 			if kind == "climbing_frame": probes = [Vector3(0,0.8,0.61),Vector3(0.5,1.0,0),Vector3(0,1.45,0),Vector3(0,0.4,-0.6)]
+			if kind == "seesaw": probes = [Vector3(-0.60,0.18,0),Vector3(0.60,0.45,0),Vector3(0,0.15,0),Vector3(0,0.29,0)]
 			for local: Vector3 in cached.feet:
 				probes.append(local+Vector3.UP*0.03)
 				var foot: Vector3 = placement*local

@@ -1,0 +1,39 @@
+{
+  "file": "seesaw.glb",
+  "title": "Seesaw",
+  "source": "Grab3D",
+  "kit": "Cozy Playground & Gym",
+  "page_url": "https://grab3d.com/models/city/seesaw/",
+  "download_url": "https://grab3d.com/dl/seesaw/seesaw.glb",
+  "download_date": "2026-11-18",
+  "sha256": "f9ca7012fedfe2500596fec84730b044cb1c14541a14e8b13956cdffb082c0ed",
+  "bytes": 1021832,
+  "triangles": 10940,
+  "materials": 2,
+  "source_bounds_min_xyz_m": [
+    -1.559999942779541,
+    0,
+    -0.23999999463558197
+  ],
+  "source_bounds_max_xyz_m": [
+    1.559999942779541,
+    1.2523725032806396,
+    0.23999999463558197
+  ],
+  "source_dimensions_xyz_m": [
+    3.119999885559082,
+    1.2523725032806396,
+    0.47999998927116394
+  ],
+  "yaw_radians": 0,
+  "uniform_scale": 0.47909068462320603,
+  "rendered_dimensions_xyz_m": [
+    1.494762881196825,
+    0.6,
+    0.2299635234790535
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; runtime child-transform merge retains authored static beam tilt, ground-centred origin and uniform envelope fit. Beam long axis is local X before row yaw. Designed partly buried tyre bumpers retained."
+}

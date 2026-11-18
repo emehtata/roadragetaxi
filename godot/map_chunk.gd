@@ -801,6 +801,8 @@ func _build_2_5d() -> void:
 		B3.prop_model_surfaces("spring_rider")
 	if _data.get("scenery_objects", []).any(func(row): return row[2] == "climbing_frame"):
 		B3.prop_model_surfaces("climbing_frame")
+	if _data.get("scenery_objects", []).any(func(row): return row[2] == "seesaw"):
+		B3.prop_model_surfaces("seesaw")
 	var started := Time.get_ticks_usec()
 	var buildings: Array = _data.get("buildings", [])
 	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D

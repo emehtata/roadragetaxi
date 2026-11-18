@@ -29,3 +29,9 @@ The model is uniformly scaled to 0.8 m height within the server's existing 0.8 m
 - License: CC0 1.0 public domain; retained full legal text in `CC0-1.0.txt`.
 - Unchanged source hash, bounds, uniform fit and provenance: `climbing_frame.json`. Light has 13,734 triangles, one PBR material and 1K textures; normal map is absent in the offered Light source. Frame, net, wall, ladder and monkey bars are retained; no source edits.
 - Runtime front wall faces local +Z; ground-centred source is uniformly scaled by 0.729927036516 to 1.666423 × 1.600000 × 1.333177 m.
+
+## Seesaw
+
+[Seesaw](https://grab3d.com/models/city/seesaw/), Grab3D Cozy Playground & Gym Kit. Downloaded 2026-11-18 from https://grab3d.com/dl/seesaw/seesaw.glb under CC0 1.0 public domain. Full text is retained in `CC0-1.0.txt`; unchanged source hash, measured bounds and runtime transforms are in `seesaw.json`. English, Finnish and German in-game credits name the source.
+
+The actual GLB contains 10,940 triangles and two PBR materials. Baked child transforms preserve the beam's authored tilt, seats, handles, stand and partly buried tyre bumpers. Its horizontal centre and intended ground contacts use local zero. Uniform scale 0.47909068462320603 fits the existing 3.0 × 0.3 × 0.6 m envelope; long axis is local X before row yaw. Textures, UVs, normals and generated tangents are retained in static chunk batches; no simulation or collision changes.
