@@ -14,6 +14,10 @@ func check(ok: bool, what: String) -> void:
 
 
 func _initialize() -> void:
+	_run.call_deferred()
+
+
+func _run() -> void:
 	host = root
 	run()
 	print("PRECIPITATION_3D failures=", failures)
@@ -27,6 +31,8 @@ func run() -> void:
 	test_drop_count_matches_intensity_and_cap()
 	test_hidden_when_underground_or_clear()
 	test_overlay_hidden_when_3d_active()
+	test_snow_volume_follows_ground_height()
+	test_snow_reentry_initialization()
 
 
 func test_fall_velocity_down_and_with_wind() -> void:
@@ -86,3 +92,45 @@ func test_overlay_hidden_when_3d_active() -> void:
 	sky.free()
 	world.free()
 	weather.free()
+
+
+func test_snow_volume_follows_ground_height() -> void:
+	var p: Node3D = P3.new()
+	var camera := Camera3D.new()
+	host.add_child(camera)
+	camera.current = true
+	host.add_child(p)
+	for height: float in [0.0, 24.0, 70.0]:
+		if "ground_elevation" in p: p.ground_elevation = height
+		camera.position = Vector3(120.0, height + 1.35, 80.0)
+		p.set_weather("snow", 0.7, Vector2.ZERO)
+		p._process(0.016)
+		check(not p._update_volume(), "stable snow volume does not restart")
+		for step in 30:
+			camera.position.x += 1.0
+			check(not p._update_volume(), "ordinary camera travel does not repeatedly restart snow")
+		camera.position.x += 100.0
+		check(p._update_volume(), "camera teleport requests a filled volume")
+		check(is_equal_approx(p.particles.global_position.y, height), "snow emitter follows sampled ground at %s m" % height)
+		check(absf(p.collision.global_position.y - height) <= P3.COLLISION_STEP_M * 0.5, "snow collision grid covers sampled ground at %s m" % height)
+		check(absf(height + P3.EMIT_HEIGHT_M - p.collision.global_position.y) < p.collision.size.y * 0.5, "collision grid covers full falling volume between elevation steps")
+		check(p.particles.global_position.x == camera.global_position.x and p.particles.global_position.z == camera.global_position.z, "snow volume follows relocated camera")
+		check(p._process_material.get_shader_parameter("extent") is Vector2 and p._process_material.get_shader_parameter("extent").length() > 10.0, "first snow volume has nonzero extent")
+	p.free()
+	camera.free()
+
+
+func test_snow_reentry_initialization() -> void:
+	var p: Node3D = P3.new()
+	host.add_child(p)
+	for kind in ["snow", "", "snow", "rain", "snow"]:
+		p.set_weather(kind, 0.7, Vector2(2, -1))
+		if kind == "": continue
+		check(p.particles.emitting and p.particles.amount == 5600, "weather reentry restores emission and count")
+		check(p._process_material.get_shader_parameter("extent") is Vector2 and p._process_material.get_shader_parameter("extent").length() > 10.0, "weather starts only with valid emission extent")
+		check(p.particles.draw_pass_1.material != null, "weather starts with drawing material")
+	var material: Material = p.particles.draw_pass_1.material
+	var lifetime: float = p.particles.lifetime
+	p.set_weather("snow", 0.7, Vector2.ZERO)
+	check(p.particles.amount == 5600 and p.particles.lifetime == lifetime and p.particles.draw_pass_1.material == material, "unchanged weather retains particle allocation/material")
+	p.free()

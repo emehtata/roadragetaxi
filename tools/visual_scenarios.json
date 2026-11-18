@@ -1845,6 +1845,86 @@
         7209734.5,
         -0.586
       ]
+    },
+    {
+      "id": "vqa_snow_city_eye_day",
+      "description": "Visible world-space snow through the existing windshield on a DEM-backed Helsinki street, two ready frames",
+      "why": "Same mapped street and January daytime pose as audit_snow_windshield_animation: terrain and camera are about 25/27 m above sea level. Facades, dark asphalt and sky expose snow readability; checks require the production terrain-relative volume and recheck normal readiness before the second frame.",
+      "city": "Helsinki",
+      "pose": [
+        385325.8,
+        6671757.1,
+        0.59
+      ],
+      "start_time": "2026-01-15T12:00",
+      "weather": "snow",
+      "cloud": 0.9,
+      "wetness": [
+        0,
+        0.2
+      ],
+      "sun_altitude_deg": [
+        0,
+        20
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 3
+      },
+      "measure_s": 5,
+      "second_shot_s": 1.0,
+      "snow_visibility": true,
+      "resolution": [
+        1280,
+        720
+      ],
+      "graphics": {
+        "precipitation": true
+      }
+    },
+    {
+      "city": "Utaj\u00e4rvi",
+      "start_time": "2026-01-15T22:00",
+      "weather": "snow",
+      "cloud": 0.9,
+      "wetness": [
+        0,
+        0.2
+      ],
+      "sun_altitude_deg": [
+        -90,
+        -12
+      ],
+      "zoom": 3.0,
+      "windshield": true,
+      "server_args": [
+        "--no-auto-fetch"
+      ],
+      "requires": {
+        "buildings_in_view": 0
+      },
+      "measure_s": 10,
+      "id": "vqa_snow_forest_eye_night",
+      "description": "Visible world-space snow in the existing windshield against a dark real forest on elevated DEM terrain",
+      "why": "Same sourced patchy woodland/road pose as audit_snow_forest_eye (15% forest within 80 m): terrain is about 97 m above sea level, exposing absolute-height emission bugs. Dark road/forest/sky provide flake contrast; normal readiness and terrain-relative production snow checks hold for both frames.",
+      "pose": [
+        477828.8,
+        7172916.7,
+        1.542
+      ],
+      "second_shot_s": 1.0,
+      "snow_visibility": true,
+      "resolution": [
+        1280,
+        720
+      ],
+      "graphics": {
+        "precipitation": true
+      }
     }
 ]
 }

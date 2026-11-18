@@ -314,6 +314,7 @@ func _process(delta: float) -> void:
 	var size := Vector2i(get_viewport().get_visible_rect().size)
 	var centre := camera_2d.get_screen_center_position()
 	var height := camera_height(size.y / camera_2d.zoom.y)
+	_precip.ground_elevation = windshield_elevation if windshield_on else ground_elevation
 	_precip.set_weather(precip_kind, precip_intensity, sky_wind)
 	if opaque:
 		set_surface_scale(camera_2d.zoom.x * _view.scaling_3d_scale)

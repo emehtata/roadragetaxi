@@ -50,6 +50,7 @@ var _hud_expected := ""
 var _hud_snapshot := {}
 var _indoor_hint: CanvasLayer
 var _indoor_draws := 0
+var _snow_snapshots := []
 var _indoor_snapshot := {}
 var _crossbuck_mesh_vertices := {}  # audit-only matching of the mapped crossing mesh
 var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
@@ -211,7 +212,7 @@ func _lineup_train(name: String, look: String, lengths: Array, width: float, y: 
 
 
 func _ready() -> void:
-	if scenario.has("indoor_hint"):
+	if scenario.has("indoor_hint") or scenario.get("snow_visibility", false):
 		main.get_window().mode = Window.MODE_WINDOWED
 		main.get_window().size = Vector2i(scenario["resolution"][0], scenario["resolution"][1])
 	# The driving camera: "camera" (or the last of "switch"); without either the map view as before (3 for "windshield").
@@ -569,6 +570,8 @@ func check() -> Array:
 	if state.is_empty():
 		return ["no state from the server yet"]
 	var missing := _hud_readiness() if scenario.has("hud_fixture") else []
+	if scenario.get("snow_visibility", false):
+		missing.append_array(_snow_readiness())
 	var pose: Array = scenario["pose"]
 	var player: Dictionary = state.get("player", {})
 	var at := Vector2(float(player.get("x", INF)), float(player.get("y", INF)))
@@ -1497,6 +1500,7 @@ var _counts := {}
 
 
 func _finish() -> void:
+	if scenario.get("snow_visibility", false): _snow_snapshots.append(_snow_result())
 	if scenario.has("indoor_hint"):
 		_indoor_snapshot = _indoor_hint_result()
 	if scenario.has("hud_fixture"):
@@ -1506,12 +1510,16 @@ func _finish() -> void:
 	main.get_viewport().get_texture().get_image().save_png(path)
 	if scenario.has("second_shot_s"):  # motion check: the same view a moment later
 		await main.get_tree().create_timer(float(scenario["second_shot_s"])).timeout
-		main.get_viewport().get_texture().get_image().save_png(out_dir.path_join("screenshot_2.png"))
+		var second_missing := check()
+		_measure_failures.append_array(second_missing)
+		if scenario.get("snow_visibility", false): _snow_snapshots.append(_snow_result())
+		if second_missing.is_empty():
+			main.get_viewport().get_texture().get_image().save_png(out_dir.path_join("screenshot_2.png"))
 	var rejections := await _spawn_rejections()
 	var perf := preload("res://perf.gd")
 	var sections := {}
 	for name in ["render_3d_gpu", "render_3d_cpu", "render_gpu", "render_cpu",
-			"chunk_add", "chunk_prepare_main", "chunk_layers", "chunk_ground_dict", "chunk_lamps_3d", "chunk_lamps_main", "chunk_wildlife", "chunk_meshes_main", "chunk_mesh_surface", "chunk_build_worker", "chunk_buildings_build", "chunk_unload"]:
+			"precipitation_3d", "chunk_add", "chunk_prepare_main", "chunk_layers", "chunk_ground_dict", "chunk_lamps_3d", "chunk_lamps_main", "chunk_wildlife", "chunk_meshes_main", "chunk_mesh_surface", "chunk_build_worker", "chunk_buildings_build", "chunk_unload"]:
 		if perf.sections.has(name):
 			var s: Array = perf.sections[name]
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
@@ -1523,7 +1531,7 @@ func _finish() -> void:
 	for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max"]:
 		lamps[key] = perf.counters.get(key, 0)
 	_write({"status": "passed" if ok else "failed", "screenshot": path, "frames": perf.summary(_frames), "render": sections, "lamps": lamps, "traffic": traffic,
-		"errors": [] if ok else ["conditions lost while measuring"] + _measure_failures})
+		"snow_visibility": _snow_snapshots, "errors": [] if ok else ["conditions lost while measuring"] + _measure_failures})
 	main.get_tree().quit(0 if ok else 1)
 
 
@@ -1849,3 +1857,48 @@ func _swing_faces_present(actual: PackedVector3Array, wanted: PackedVector3Array
 				matched=false;break
 		if matched: return true
 	return false
+
+
+func _snow_result() -> Dictionary:
+	var layer = layer_3d_view()
+	if layer == null or not is_instance_valid(layer._precip): return {}
+	var p: Precipitation3D = layer._precip
+	if p._kind != "snow": return {}  # parameters are unset until the first weather update
+	var camera: Camera3D = layer._camera
+	var at := Vector2(camera.global_position.x, camera.global_position.z)
+	var ground: float = main.map_layer.deck_height(at, 0)
+	var position: Vector3 = p.particles.global_position
+	var collision_at: Vector3 = p.collision.global_position
+	var extent = p._process_material.get_shader_parameter("extent")
+	var material: ShaderMaterial = p.particles.draw_pass_1.material
+	var wind: Vector2 = p._process_material.get_shader_parameter("wind")
+	return {"camera_m": [at.x, camera.global_position.y, at.y], "ground_m": ground,
+		"emitter_m": [position.x, position.y, position.z], "spawn_m": position.y + p.EMIT_HEIGHT_M,
+		"extent_m": [extent.x, extent.y] if extent is Vector2 else [],
+		"collision_center_m": [collision_at.x, collision_at.y, collision_at.z],
+		"collision_size_m": [p.collision.size.x, p.collision.size.y, p.collision.size.z],
+		"floor_m": p._process_material.get_shader_parameter("ground_height"), "drift_mps": [wind.x, wind.y],
+		"base_speed_mps": p._process_material.get_shader_parameter("base_speed"),
+		"flake_size_m": p._process_material.get_shader_parameter("size_m"),
+		"material": material.shader.resource_path if material != null else "", "count": p.particles.amount,
+		"emitting": p.particles.emitting, "visible": p.is_visible_in_tree(), "speed_scale": p.particles.speed_scale,
+		"kind": p._kind, "map_loading": main.entities.shown_state().get("map_loading", "")}
+
+
+func _snow_readiness() -> Array:
+	var data := _snow_result()
+	if data.is_empty(): return ["no production snow node"]
+	var missing := []
+	if main.get_viewport().get_visible_rect().size != Vector2(1280, 720): missing.append("snow viewport is not 1280x720")
+	if not data.visible or not data.emitting or data.kind != "snow" or data.count != 5600 or data.speed_scale != 1.0:
+		missing.append("production snow is not emitting at normal intensity/speed")
+	if data.material != "res://precip_snow.gdshader": missing.append("snow material is not active")
+	if data.extent_m.is_empty(): missing.append("snow extent not initialized")
+	if data.map_loading != "" or main.hud._map_sign.visible or main._start_sign != null:
+		missing.append("snow map/startup overlay still loading")
+	if absf(float(data.emitter_m[1]) - float(data.ground_m)) > 0.1 or float(data.spawn_m) < float(data.camera_m[1]) + 20.0 and scenario.get("windshield", false):
+		missing.append("snow volume is not above the sampled terrain/camera")
+	var half_height: float = float(data.collision_size_m[1]) * 0.5
+	if maxf(absf(float(data.collision_center_m[1]) - float(data.ground_m)), absf(float(data.collision_center_m[1]) - float(data.spawn_m))) + 5.0 >= half_height:
+		missing.append("snow collision volume does not cover sampled terrain")
+	return missing

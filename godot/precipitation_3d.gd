@@ -19,6 +19,7 @@ const PROCESS_SHADER := """
 shader_type particles;
 uniform vec2 extent;
 uniform float emit_height;
+uniform float ground_height;
 uniform float base_speed;
 uniform float speedup;
 uniform vec2 wind;
@@ -50,7 +51,7 @@ void start() {
 	TRANSFORM = mat4(vec4(width, 0.0, 0.0, 0.0),
 		vec4(streak_s > 0.0 ? v * streak_s : vec3(0.0, width, 0.0), 0.0),
 		vec4(0.0, 0.0, width, 0.0),
-		vec4(origin.x + land.x + offset.x, emit_height, origin.z + land.y + offset.y, 1.0));
+		vec4(origin.x + land.x + offset.x, origin.y + emit_height, origin.z + land.y + offset.y, 1.0));
 }
 
 void process() {
@@ -62,7 +63,7 @@ void process() {
 		v.x += amplitude * w * cos(w * CUSTOM.w + CUSTOM.y);
 	}
 	VELOCITY = v;
-	if (COLLIDED || TRANSFORM[3].y <= 0.0) {
+	if (COLLIDED || TRANSFORM[3].y <= ground_height) {
 		ACTIVE = false;
 	}
 }
@@ -70,6 +71,9 @@ void process() {
 
 var particles: GPUParticles3D
 var collision: GPUParticlesCollisionHeightField3D
+var ground_elevation := 0.0  # sampled deck under the gameplay camera, including DEM terrain
+var _volume_origin := Vector3(INF, INF, INF)
+var _extent := 30.0
 var _kind := ""
 var _intensity := -1.0
 var _process_material: ShaderMaterial
@@ -101,6 +105,7 @@ func _init() -> void:
 	_process_material.shader.code = PROCESS_SHADER
 	_process_material.set_shader_parameter("emit_height", EMIT_HEIGHT_M)
 	_process_material.set_shader_parameter("speedup", NEAR_SPEEDUP)
+	_process_material.set_shader_parameter("extent", Vector2(_extent, _extent))
 	particles.process_material = _process_material
 	particles.draw_pass_1 = QuadMesh.new()
 	for kind in ["rain", "snow"]:
@@ -116,8 +121,8 @@ func _init() -> void:
 
 func set_weather(kind: String, intensity: float, wind_mps: Vector2) -> void:
 	visible = kind != ""
-	particles.emitting = visible
 	if not visible:
+		particles.emitting = false
 		_kind = ""
 		return
 	_process_material.set_shader_parameter("wind", wind_mps * float(WIND_FACTOR.get(kind, 0.5)))
@@ -134,6 +139,9 @@ func set_weather(kind: String, intensity: float, wind_mps: Vector2) -> void:
 	_process_material.set_shader_parameter("size_m", SIZE_M.get(kind, 0.05))
 	_process_material.set_shader_parameter("streak_s", 0.0 if kind == "snow" else STREAK_S)
 	_process_material.set_shader_parameter("sway", 1.0 if kind == "snow" else 0.0)
+	_update_volume()
+	particles.emitting = true
+	particles.restart()  # preprocess with initialized uniforms and the current terrain-relative origin
 
 
 ## Follow the camera: the emitter box covers its view, the collision box snaps to a grid.
@@ -141,15 +149,28 @@ func _process(_delta: float) -> void:
 	if not visible:
 		return
 	var started := Time.get_ticks_usec()
-	var camera := get_viewport().get_camera_3d()
-	if camera != null:
-		var at := camera.global_position
-		var extent := maxf(at.y, 40.0) * tan(deg_to_rad(camera.fov) * 0.5) * 1.8 + 10.0
-		particles.global_position = Vector3(at.x, 0.0, at.z)
-		_process_material.set_shader_parameter("extent", Vector2(extent, extent))
-		var step := COLLISION_STEP_M
-		var span := ceilf(extent * 2.0 / step + 2.0) * step
-		if collision.size.x != span:  # re-rendered only when moved or resized
-			collision.size = Vector3(span, EMIT_HEIGHT_M * 2.0 + 20.0, span)
-		collision.global_position = Vector3(snappedf(at.x, step), 0.0, snappedf(at.z, step))
+	if _update_volume():
+		particles.restart()  # a teleport/view-volume change needs a filled sky at its new location
 	Perf.add("precipitation_3d", Time.get_ticks_usec() - started)
+
+
+## Keep collision capture on its existing grid; ordinary motion only updates uniforms.
+func _update_volume() -> bool:
+	_process_material.set_shader_parameter("ground_height", ground_elevation)
+	if not is_inside_tree(): return false
+	var camera := get_viewport().get_camera_3d()
+	if camera == null: return false
+	var at := camera.global_position
+	var extent := maxf(at.y - ground_elevation, 40.0) * tan(deg_to_rad(camera.fov) * 0.5) * 1.8 + 10.0
+	var origin := Vector3(at.x, ground_elevation, at.z)
+	var moved := not _volume_origin.is_finite() or origin.distance_to(_volume_origin) > minf(extent, EMIT_HEIGHT_M * 0.5) or maxf(extent / _extent, _extent / extent) > 1.5
+	particles.global_position = origin
+	_process_material.set_shader_parameter("extent", Vector2(extent, extent))
+	var step := COLLISION_STEP_M
+	var span := ceilf(extent * 2.0 / step + 2.0) * step
+	if collision.size.x != span:
+		collision.size = Vector3(span, EMIT_HEIGHT_M * 2.0 + COLLISION_STEP_M + 20.0, span)
+	collision.global_position = Vector3(snappedf(at.x, step), snappedf(ground_elevation, step), snappedf(at.z, step))
+	_volume_origin = origin
+	_extent = extent
+	return moved
