@@ -1,0 +1,32 @@
+{
+  "file": "carousel.glb",
+  "title": "Fairground Carousel",
+  "source": "Grab3D",
+  "kit": "Cozy Amusement Park",
+  "page_url": "https://grab3d.com/models/city/carousel/",
+  "download_url": "https://grab3d.com/dl/carousel/carousel-light.glb",
+  "download_date": "2026-11-18",
+  "sha256": "95de9b8f5d48b5832920dd217b58a448cd381d1a39d9b8739e154e6070ec5235",
+  "bytes": 1315804,
+  "triangles": 21956,
+  "materials": 3,
+  "source_bounds_min_xyz_m": [
+    -3.5835914611816406,
+    0,
+    -3.5843346118927
+  ],
+  "source_bounds_max_xyz_m": [
+    3.5835914611816406,
+    6.4729993641376495,
+    3.584306001663208
+  ],
+  "source_dimensions_xyz_m": [
+    7.167182922363281,
+    6.4729993641376495,
+    7.168640613555908
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; baked child transforms preserve rotating section +0.28 m vertical offset. Static neutral pose. Horizontal bounds centred, base at zero. Uniform scale min(1, footprint inscribed radius / source horizontal bounding-box half-diagonal); footprint radius is nearest closed-loop edge to mean centre. Per-vertex DEM grounding retains existing chunk behavior."
+}

@@ -1,0 +1,32 @@
+{
+  "file": "ferris_wheel.glb",
+  "title": "Ferris Wheel",
+  "source": "Grab3D",
+  "kit": "Cozy Amusement Park",
+  "page_url": "https://grab3d.com/models/city/ferris-wheel/",
+  "download_url": "https://grab3d.com/dl/ferris-wheel/ferris-wheel.glb",
+  "download_date": "2026-11-18",
+  "sha256": "2119cc9cef2c16d8bde3376fb276aefb57b47cb96869b93aa9b01967249c4711",
+  "bytes": 2898664,
+  "triangles": 39652,
+  "materials": 3,
+  "source_bounds_min_xyz_m": [
+    -5.034859657287598,
+    0,
+    -1.659999966621399
+  ],
+  "source_bounds_max_xyz_m": [
+    5.034859657287598,
+    11.677994728088379,
+    1.659999966621399
+  ],
+  "source_dimensions_xyz_m": [
+    10.069719314575195,
+    11.677994728088379,
+    3.319999933242798
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; child translations baked into static material batches, horizontal bounds centred and base at zero. Uniform scale min(1, nearest mapped loop edge distance from mean centre / source horizontal bounding-box half-diagonal). Ferris wide local X axis follows the mapped farthest endpoint; round ride has deterministic zero yaw. Existing per-vertex DEM grounding adjusts normals/tangents."
+}

@@ -1,0 +1,32 @@
+{
+  "file": "swing_ride.glb",
+  "title": "Swing Ride",
+  "source": "Grab3D",
+  "kit": "Cozy Amusement Park",
+  "page_url": "https://grab3d.com/models/city/swing-ride/",
+  "download_url": "https://grab3d.com/dl/swing-ride/swing-ride-light.glb",
+  "download_date": "2026-11-18",
+  "sha256": "11d061cfd3f6c352405ff8ae15b2e541ad478326a53a64598d4941864dad8c89",
+  "bytes": 1371320,
+  "triangles": 18532,
+  "materials": 3,
+  "source_bounds_min_xyz_m": [
+    -3.77083420753479,
+    0,
+    -3.870834231376648
+  ],
+  "source_bounds_max_xyz_m": [
+    3.77083420753479,
+    7.799999713897705,
+    3.864142060279846
+  ],
+  "source_dimensions_xyz_m": [
+    7.54166841506958,
+    7.799999713897705,
+    7.734976291656494
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; child translations baked into static material batches, horizontal bounds centred and base at zero. Uniform scale min(1, nearest mapped loop edge distance from mean centre / source horizontal bounding-box half-diagonal). Ferris wide local X axis follows the mapped farthest endpoint; round ride has deterministic zero yaw. Existing per-vertex DEM grounding adjusts normals/tangents."
+}

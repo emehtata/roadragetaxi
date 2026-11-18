@@ -4226,7 +4226,7 @@ func test_buildings_3d() -> void:
 	check(is_equal_approx(Array(rides["deck"]).map(func(v): return v.y).max(), 30.0), "a drop tower stands 30 m")
 	rides["deck"] = PackedVector3Array()
 	B3.attractions(rides, [["ferris_wheel", ring]])
-	check(Array(rides["deck"]).map(func(v): return v.y).max() > 20.0, "a Ferris wheel's ring stands over its frame")
+	check(rides.get("prop_surfaces",{}).size()==3, "a Ferris wheel retains its authored frame, rotor and bulb materials")
 	var graves := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	B3.site_details(graves, [[Vector2.ZERO, "grave_yard"]], 0.0)
 	check(is_equal_approx(Array(graves["deck"]).map(func(v): return v.y).max(), 0.85), "a grave's headstone stands 0.85 m")
@@ -4238,26 +4238,11 @@ func test_buildings_3d() -> void:
 	MapChunk.buildings_3d = false
 
 
-## VQA-022: the platform top must reach every seat base and the grounded mast.
-## VQA-023: actual hanger triangles connect each seat to the inset canopy.
-## VQA-024: each spoke crosses the actual rim and a shared axle joins both A-frame apexes.
-const FERRIS_SUPPORT_COLOR := Color8(190,194,201)
-const FERRIS_ORIGINAL_HASHES := {"17/0.00/0.1":"01cdd409f1b1613698e46c58df5e4ae4bdea773202309fbec2aed30044a641c8","17/0.00/1.0":"f0650ebc61cace793c0687c2831fa1c15f0324dc45362c6fe28bcd566bab3e7d","17/0.73/0.1":"d3c42e4a71f2210df70d648d1a60180e181ef80e0cafb57ac7a302a338679731","17/0.73/1.0":"bcf95414171f1791efb8c77d4c2ba8f921db247286c3336f7760c853811819b4","4/0.00/0.1":"ad42e1cc31f16e5fd261fc15fdb41abdd3cbf69d045e968f843e8c6bc5de855c","4/0.00/1.0":"e6b7cb197a5f676f3a95b29b8c2babf326642f01c53cbf052d3016f4be32ef2e","4/0.73/0.1":"82e356a3c5085c35ff80a97b51d7914cc3ffa42fe7b0a4360d9f03232357f5f5","4/0.73/1.0":"d778990bb73cd50d7571396b65b3dc7f04c09870ba34e8c32b020da515d3b1ee","48/0.00/0.1":"01cdd409f1b1613698e46c58df5e4ae4bdea773202309fbec2aed30044a641c8","48/0.00/1.0":"f0650ebc61cace793c0687c2831fa1c15f0324dc45362c6fe28bcd566bab3e7d","48/0.73/0.1":"b56c7bbfdd0859de3995f8afce5b0509b023600260081f0bd2fbdf436dab183d","48/0.73/1.0":"90cc385fbde13e8c185cf1eda78775013b015d00691e80217fb11af9e2b6a00b"}
-
-
-func _ferris_layout(loop:PackedVector2Array) -> Array:
-	var centre:=Vector2.ZERO
-	for i in loop.size()-1:centre+=loop[i]/(loop.size()-1)
-	var far:=loop[0]
-	for point:Vector2 in loop:
-		if point.distance_to(centre)>far.distance_to(centre):far=point
-	return [centre,(far-centre).normalized(),maxf(far.distance_to(centre),3.0)]
-
-
 func _ferris_surface_crosses(vertices:PackedVector3Array, point:Vector3, direction:Vector3, half:float) -> bool:
 	for i in range(0,vertices.size(),3):
 		if Geometry3D.segment_intersects_triangle(point-direction*half,point+direction*half,vertices[i],vertices[i+1],vertices[i+2])!=null:return true
 	return false
+
 
 func _picnic_table(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
 	var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
@@ -4326,7 +4311,6 @@ func test_picnic_table_geometry_preserved() -> void:
 	check(faces==replacement,"picnic chunk reload stable")
 	check(map._chunks["0_0"].meshes_3d.any(func(mesh):return mesh.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON),"picnic deck casts shadows")
 	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
-
 
 
 func _bicycle_rack(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
@@ -4527,267 +4511,46 @@ func test_caravan_with_car_geometry_preserved() -> void:
 	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
 
 
+func _check_ride_kit(kind: String, triangles: int) -> void:
+	var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.attractions(out,[[kind,_coaster_test_loop(48)]])
+	var count := 0
+	for part:Dictionary in out.get("prop_surfaces",{}).values():count+=part.verts.size()
+	check(out.deck.is_empty() and count==triangles*3,"ride retains all selected GLB triangles: "+kind)
+
+
 func test_ferris_wheel_rim_connected() -> void:
-	for count:int in [4,17,48]:
-		for angle:float in [0.0,0.73]:
-			for size:float in [0.1,1.0]:
-				var loop:=_coaster_test_loop(count)
-				for i in loop.size():loop[i]=loop[i].rotated(angle)*size+Vector2(17,-23)
-				var layout:=_ferris_layout(loop);var centre:Vector2=layout[0];var axis:Vector2=layout[1];var radius:float=layout[2]
-				var hub:=B3.to_3d(centre,radius+2.0);var normal:=B3.to_3d(axis.orthogonal())
-				var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[["ferris_wheel",loop]])
-				var supports:=PackedVector3Array();var rim:=PackedVector3Array();var frame:=PackedVector3Array()
-				for i in out.deck.size():
-					if out.deck_colors[i]==FERRIS_SUPPORT_COLOR:supports.append(out.deck[i])
-					elif out.deck_colors[i]==Color8(233,229,208):rim.append(out.deck[i])
-					elif out.deck_colors[i]==Color8(77,99,124):frame.append(out.deck[i])
-				check(supports.size()==17*18,"sixteen slender spoke prisms and one axle, without disc or missing vertical spokes")
-				for k in 16:
-					var a:=TAU*k/16.0;var b:=TAU*(k+1)/16.0
-					var tip:=B3.to_3d(centre+axis*radius*(cos(a)+cos(b))*0.5,radius+2.0+radius*(sin(a)+sin(b))*0.5+0.1)
-					var continuous:=false
-					for i in range(0,supports.size(),3):
-						var triangle:=Array(supports.slice(i,i+3))
-						continuous=continuous or triangle.any(func(v):return v.distance_to(hub)<0.09) and triangle.any(func(v):return v.distance_to(tip)<0.09)
-					check(continuous,"a real nondegenerate spoke surface continuously spans hub to rim segment%d"%k)
-					check(_ferris_surface_crosses(supports,tip.move_toward(hub,0.001),normal,0.08) and _ferris_surface_crosses(rim,tip,normal,0.12),"spoke tip occupies actual rim cross-section%d"%k)
-				for side:float in [-1.0,1.0]:
-					var apex:=hub+normal*side*0.5+Vector3.UP*0.05
-					check(_ferris_surface_crosses(supports,apex,B3.to_3d(axis),0.2) and _ferris_surface_crosses(frame,apex,B3.to_3d(axis),0.5),"shared axle crosses actual A-frame apex")
-				for i in range(0,supports.size(),3):check((supports[i+1]-supports[i]).cross(supports[i+2]-supports[i]).length()>0.000001,"support triangle has real area")
+	_check_ride_kit("ferris_wheel",39652)
 
 
 func test_ferris_wheel_geometry_preserved() -> void:
-	for count:int in [4,17,48]:
-		for angle:float in [0.0,0.73]:
-			for size:float in [0.1,1.0]:
-				var loop:=_coaster_test_loop(count)
-				for i in loop.size():loop[i]=loop[i].rotated(angle)*size+Vector2(17,-23)
-				var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[["ferris_wheel",loop]])
-				var original:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-				for i in out.deck.size():
-					if out.deck_colors[i]!=FERRIS_SUPPORT_COLOR:original.deck.append(out.deck[i]);original.deck_colors.append(out.deck_colors[i])
-				check(_carousel_ride_hash(original)==FERRIS_ORIGINAL_HASHES["%d/%.2f/%.1f"%[count,angle,size]],"original rim/cabins/A-frame positions and colours preserved")
-				var bounds:=AABB(original.deck[0],Vector3.ZERO)
-				for v:Vector3 in original.deck:bounds=bounds.expand(v)
-				check(Array(out.deck).all(func(v):return bounds.grow(0.001).has_point(v)),"spokes/axle preserve overall bounds")
-				for ground:float in [0.0,13.5]:
-					var grid:={} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
-					var input:={"rect":Rect2(-50,-50,100,100),"attractions":[["ferris_wheel",loop]],"ground_heights":grid}
-					var built:=B3.build([],[],Vector2.ZERO,[],[],input);var shifted:PackedVector3Array=out.deck.duplicate()
-					for i in shifted.size():shifted[i].y+=ground
-					check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"wheel support terrain adaptation and rebuild stable")
-	for kind:String in ["carousel","swing_carousel","roller_coaster","drop_tower"]:
-		var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[[kind,_coaster_test_loop(48)]])
-		check(_carousel_ride_hash(out)==FERRIS_OTHER_RIDE_HASHES[kind],"wheel fix preserves "+kind)
-	var empty:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(empty,[["ferris_wheel",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
-	check(empty.deck.is_empty(),"wheel short-loop guard retained")
-	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
-	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
-	var map:=MapLayer.new();root.add_child(map);var points:=[]
-	for point:Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([point.x,point.y])
-	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["ferris_wheel",points]]}
-	map.add_chunk(row.duplicate(true));var faces:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces());check(mesh.mesh.get_faces().size()<100 or mesh.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_ON,"wheel chunk shadow settings retained")
-	map.replace_chunk(row.duplicate(true));var replacement:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"wheel chunk replacement stable")
-	map.clear();check(map._chunks.is_empty(),"wheel chunk unload")
-	map.add_chunk(row.duplicate(true));replacement.clear()
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"wheel chunk reload stable")
-	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
-
-
-const FERRIS_OTHER_RIDE_HASHES := {"carousel":"69cfd4b7864c910c7692660aba3cde4dd8f09befd46aafa03c72605a0e33eef4","swing_carousel":"bf9b221d3fa82f5c5d35a7a0725c657eeaae5194cdd9a91a94817d2891695ed7","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+	_check_ride_kit("carousel",21956)
+	_check_ride_kit("swing_carousel",18532)
 
 
 func test_swing_carousel_seats_connected() -> void:
-	for count:int in [4,17,48]:
-		for angle:float in [0.0,0.73]:
-			var loop:=_coaster_test_loop(count,Vector2(17,-23),angle)
-			var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-			B3.attractions(out,[["swing_carousel",loop]])
-			var rods:=PackedVector3Array();var canopy:=PackedVector3Array()
-			for i in range(0,out.deck.size(),3):
-				if out.deck_colors[i]==Color8(210,210,215):rods.append_array(out.deck.slice(i,i+3))
-				elif out.deck[i].y>=6.999 and out.deck[i+1].y>=6.999 and out.deck[i+2].y>=6.999 and out.deck[i].y<=7.401 and out.deck[i+1].y<=7.401 and out.deck[i+2].y<=7.401:canopy.append_array(out.deck.slice(i,i+3))
-			check(rods.size()==ceili(count/6.0)*18,"one slender18-vertex hanger for every swing seat")
-			for seat in range(0,count,6):
-				var at:=loop[seat]
-				var lower:=PackedVector3Array();var upper:=PackedVector3Array()
-				for v:Vector3 in rods:
-					if v.y<3.65 and Vector2(v.x,v.z).distance_to(at)<0.1:lower.append(v)
-				check(not lower.is_empty(),"hanger reaches actual seat top, rather than a platform or floating rod")
-				if lower.is_empty():continue
-				var start:=lower[0]
-				# The triangles sharing this lower endpoint must carry a real surface up to the canopy.
-				for i in range(0,rods.size(),3):
-					if Array(rods.slice(i,i+3)).any(func(v):return v.distance_to(start)<0.001):
-						for v:Vector3 in rods.slice(i,i+3):
-							if v.y>=6.99:upper.append(v)
-				check(not upper.is_empty(),"seat hanger is one continuous surface to canopy")
-				var touches:=false
-				for v:Vector3 in upper:
-					for i in range(0,canopy.size(),3):
-						var poly:=PackedVector2Array([Vector2(canopy[i].x,canopy[i].z),Vector2(canopy[i+1].x,canopy[i+1].z),Vector2(canopy[i+2].x,canopy[i+2].z)])
-						touches=touches or Geometry2D.is_point_in_polygon(Vector2(v.x,v.z),poly) and v.y>=6.995 and v.y<=7.055
-				check(touches,"hanger upper end intersects actual canopy triangle footprint")
-				check(Array(lower).all(func(v):return v.y<=3.605 and v.y>=3.565 or v.y>=3.625 and v.y<=3.635),"hanger overlaps seat top by3cm while leaving seat exposed")
-			check(rods.is_empty() or Array(rods).all(func(v):return v.y>=3.569 and v.y<=7.051),"no platform, ground pedestal or taller silhouette introduced")
+	_check_ride_kit("swing_carousel",18532)
 
 
 func test_swing_carousel_geometry_preserved() -> void:
-	for count:int in [4,17,48]:
-		var loop:=_coaster_test_loop(count,Vector2(17,-23),0.73)
-		var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-		B3.attractions(out,[["swing_carousel",loop]])
-		var original:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-		var centre:=Vector2.ZERO
-		for i in count:centre+=loop[i]/count
-		B3._box3d(original,"deck",centre,0.3,0,7.6,Color8(248,213,93))
-		for i in count:B3._raised_polygon_at(original,"deck",PackedVector2Array([centre,centre+(loop[i]-centre)*0.45,centre+(loop[(i+1)%count]-centre)*0.45]),7.0,7.4,B3.RIDE_COLORS[(i/6)%4])
-		for i in range(0,count,6):B3._box3d(original,"deck",loop[i],0.6,3.0,3.6,B3.RIDE_COLORS[(i/6)%4])
-		var vertices:=PackedVector3Array();var colors:=PackedColorArray()
-		for i in out.deck.size():
-			if out.deck_colors[i]!=Color8(210,210,215):vertices.append(out.deck[i]);colors.append(out.deck_colors[i])
-		check(vertices==original.deck and colors==original.deck_colors,"swing original seats/mast/canopy preserved exactly")
-		for ground:float in [0.0,13.5]:
-			var grid:={} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
-			var input:={"rect":Rect2(-50,-50,100,100),"attractions":[["swing_carousel",loop]],"ground_heights":grid}
-			var built:=B3.build([],[],Vector2.ZERO,[],[],input)
-			var shifted:PackedVector3Array=out.deck.duplicate()
-			for i in shifted.size():shifted[i].y+=ground
-			check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"swing hanger terrain build/contact stable")
-	for kind:String in ["carousel","roller_coaster","ferris_wheel","drop_tower"]:
-		var out:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(out,[[kind,_coaster_test_loop(48)]])
-		check(_carousel_ride_hash(out)==SWING_OTHER_RIDE_HASHES[kind],"swing fix preserves "+kind)
-	var empty:={"deck":PackedVector3Array(),"deck_colors":PackedColorArray()};B3.attractions(empty,[["swing_carousel",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
-	check(empty.deck.is_empty(),"swing short-loop guard retained")
-	var flags:=[MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
-	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
-	var map:=MapLayer.new();root.add_child(map)
-	var points:=[]
-	for point:Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([point.x,point.y])
-	var row:={"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["swing_carousel",points]]}
-	map.add_chunk(row.duplicate(true));var faces:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
-	map.replace_chunk(row.duplicate(true));var replacement:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"swing chunk replacement stable")
-	map.clear();check(map._chunks.is_empty(),"swing chunk unload")
-	map.add_chunk(row.duplicate(true));replacement.clear()
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"swing chunk reload stable")
-	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
-
-
-const SWING_OTHER_RIDE_HASHES := {"carousel":"69cfd4b7864c910c7692660aba3cde4dd8f09befd46aafa03c72605a0e33eef4","roller_coaster":"4c75af577679af702c35587e1b67c34e29c9e8628a3eba3915248a4a711227a8","ferris_wheel":"fc998d7299d8f7421c6b621c7a71c35d760ea8d29f7f47a9767d7699438cff92","drop_tower":"718284d6205f488f2c5faf5694c591a26c1409b112eb2f39f22699c0166148bb"}
+	_check_ride_kit("carousel",21956)
+	_check_ride_kit("ferris_wheel",39652)
 
 
 func test_carousel_seats_connected() -> void:
-	for count: int in [4,17,48]:
-		for angle: float in [0.0,0.73]:
-			var loop := _coaster_test_loop(count,Vector2(17,-23),angle)
-			var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-			B3.attractions(out,[["carousel",loop]])
-			var top := PackedVector3Array()
-			var supports := PackedVector3Array()
-			for i in range(0,out.deck.size(),3):
-				if out.deck_colors[i] != Color8(165,120,65): continue
-				supports.append_array(out.deck.slice(i,i+3))
-				if absf(out.deck[i].y-0.9)<0.00001 and absf(out.deck[i+1].y-0.9)<0.00001 and absf(out.deck[i+2].y-0.9)<0.00001:
-					top.append_array(out.deck.slice(i,i+3))
-			check(not top.is_empty(),"carousel has a thin support top at seat base")
-			var area := 0.0
-			for i in range(0,top.size(),3):
-				var normal := (top[i+1]-top[i]).cross(top[i+2]-top[i])
-				check(normal.y < -0.00001,"carousel platform top front faces upward")
-				area += absf(normal.y)*0.5
-			check(absf(area-absf(B3._signed_area(loop)))<0.001,"platform spans full footprint without holes or oversized slabs")
-			var connected := {0:true} if not top.is_empty() else {}
-			for pass_index in top.size()/3:
-				for triangle_index in top.size()/3:
-					if connected.has(triangle_index): continue
-					for other_index in connected.keys():
-						var shared := 0
-						for vertex in top.slice(triangle_index*3,triangle_index*3+3):
-							if Array(top.slice(other_index*3,other_index*3+3)).any(func(v):return v.distance_to(vertex)<0.001): shared+=1
-						if shared>=2: connected[triangle_index]=true;break
-			check(not top.is_empty() and connected.size()==top.size()/3,"platform triangles form one connected surface from mast to all seats")
-			var centre := Vector2.ZERO
-			for i in count: centre += loop[i]/count
-			var contacts := [[centre+Vector2(0.3,0)]]  # actual central mast side at platform height
-			for seat in range(0,count,6):
-				var base := []
-				for i in out.deck.size():
-					if out.deck_colors[i] != Color8(165,120,65) and absf(out.deck[i].y-0.9)<0.00001:
-						var at := Vector2(out.deck[i].x,out.deck[i].z)
-						if at.distance_to(loop[seat])<0.85: base.append(at)
-				check(not base.is_empty(),"seat base wall vertices retained")
-				var edge_midpoints := []
-				for a:Vector2 in base:
-					for b:Vector2 in base:
-						if absf(a.distance_to(b)-1.2)<0.001: edge_midpoints.append((a+b)*0.5)
-				contacts.append(base+edge_midpoints)
-			for group:Array in contacts:
-				var touches := false
-				for contact:Vector2 in group:
-					for i in range(0,top.size(),3):
-						var triangle := PackedVector2Array([Vector2(top[i].x,top[i].z),Vector2(top[i+1].x,top[i+1].z),Vector2(top[i+2].x,top[i+2].z)])
-						touches = touches or Geometry2D.is_point_in_polygon(contact,triangle)
-						for edge in 3: touches = touches or Geometry2D.get_closest_point_to_segment(contact,triangle[edge],triangle[(edge+1)%3]).distance_to(contact)<0.005
-				check(touches,"every actual seat base and mast side contact continuous platform")
-			check(not supports.is_empty() and Array(supports).all(func(v):return v.y>=0.74999 and v.y<=0.90001),"support is a thin15cm platform, not buried seats or a solid pedestal")
+	var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
+	B3.attractions(out,[["carousel",_coaster_test_loop(48)]])
+	var count := 0
+	for part:Dictionary in out.get("prop_surfaces",{}).values():count+=part.verts.size()
+	check(out.deck.is_empty() and count==21956*3,"carousel uses all selected kit triangles")
 
 
 func test_carousel_geometry_preserved() -> void:
-	for count: int in [4,17,48]:
-		var loop := _coaster_test_loop(count,Vector2(17,-23),0.73)
-		var expected := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-		B3.attractions(expected,[["carousel",loop]])
-		var original := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-		var centre := Vector2.ZERO
-		for i in count: centre+=loop[i]/count
-		B3._box3d(original,"deck",centre,0.3,0,5.1,Color8(248,213,93))
-		for i in count:
-			B3._raised_polygon_at(original,"deck",PackedVector2Array([centre,centre+(loop[i]-centre)*0.72,centre+(loop[(i+1)%count]-centre)*0.72]),4.5,4.9,B3.RIDE_COLORS[(i/6)%4])
-		for i in range(0,count,6): B3._box3d(original,"deck",loop[i],0.6,0.9,1.6,B3.RIDE_COLORS[(i/6)%4])
-		var unchanged := PackedVector3Array();var colors:=PackedColorArray()
-		for i in expected.deck.size():
-			if expected.deck_colors[i] != Color8(165,120,65): unchanged.append(expected.deck[i]);colors.append(expected.deck_colors[i])
-		check(unchanged==original.deck and colors==original.deck_colors,"original seats/mast/canopy vertices and colours unchanged")
-		for ground: float in [0.0,13.5]:
-			var grid := {} if ground==0 else {"origin":Vector2(-50,-50),"step":100.0,"cols":2,"heights":PackedFloat32Array([ground,ground,ground,ground])}
-			var input := {"rect":Rect2(-50,-50,100,100),"attractions":[["carousel",loop]],"ground_heights":grid}
-			var built := B3.build([],[],Vector2.ZERO,[],[],input)
-			var shifted:PackedVector3Array=expected.deck.duplicate()
-			for i in shifted.size(): shifted[i].y+=ground
-			check(built.deck==shifted and built==B3.build([],[],Vector2.ZERO,[],[],input),"carousel support grounded build stable")
-	var original_hashes := CAROUSEL_OTHER_RIDE_HASHES
-	for kind: String in original_hashes:
+	for kind:String in CAROUSEL_OTHER_RIDE_HASHES:
 		var out := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
 		B3.attractions(out,[[kind,_coaster_test_loop(48)]])
-		check(_carousel_ride_hash(out)==original_hashes[kind],"other attraction unchanged: "+kind)
-	var empty := {"deck":PackedVector3Array(),"deck_colors":PackedColorArray()}
-	B3.attractions(empty,[["carousel",PackedVector2Array([Vector2.ZERO,Vector2.ONE])]])
-	check(empty.deck.is_empty(),"carousel short-loop guard retained")
-	var flags := [MapChunk.buildings_3d,MapChunk.outdoor_3d,MapChunk.build_async]
-	MapChunk.buildings_3d=true;MapChunk.outdoor_3d=true;MapChunk.build_async=false
-	var map := MapLayer.new();root.add_child(map)
-	var points := []
-	for point:Vector2 in _coaster_test_loop(48,Vector2(50,50)):points.append([point.x,point.y])
-	var row := {"chunk_id":"0_0","bounds":[0,0,100,100],"attractions":[["carousel",points]]}
-	map.add_chunk(row.duplicate(true));var faces:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:faces.append(mesh.mesh.get_faces())
-	map.replace_chunk(row.duplicate(true));var replacement:=[]
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"carousel chunk replacement stable")
-	map.clear();check(map._chunks.is_empty(),"carousel chunk unloaded")
-	map.add_chunk(row.duplicate(true));replacement.clear()
-	for mesh:MeshInstance3D in map._chunks["0_0"].meshes_3d:replacement.append(mesh.mesh.get_faces())
-	check(faces==replacement,"carousel chunk reload stable")
-	map.free();MapChunk.buildings_3d=flags[0];MapChunk.outdoor_3d=flags[1];MapChunk.build_async=flags[2]
+		if kind in ["ferris_wheel","swing_carousel"]: _check_ride_kit(kind,39652 if kind=="ferris_wheel" else 18532)
+		else: check(_carousel_ride_hash(out)==CAROUSEL_OTHER_RIDE_HASHES[kind],"carousel GLB preserves "+kind)
 
 
 func _carousel_ride_hash(out:Dictionary) -> String:

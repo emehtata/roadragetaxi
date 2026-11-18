@@ -3206,6 +3206,9 @@ const SWING_SCENE := preload("res://assets/props/swing_set.glb")
 const SLIDE_SCENE := preload("res://assets/props/playground_slide.glb")
 const SPRING_RIDER_SCENE := preload("res://assets/props/spring_rider.glb")
 const CLIMBING_FRAME_SCENE := preload("res://assets/props/climbing_frame.glb")
+const SWING_RIDE_SCENE := preload("res://assets/props/swing_ride.glb")
+const FERRIS_WHEEL_SCENE := preload("res://assets/props/ferris_wheel.glb")
+const CAROUSEL_SCENE := preload("res://assets/props/carousel.glb")
 const SEESAW_SCENE := preload("res://assets/props/seesaw.glb")
 static var _prop_model_surfaces := {}  # immutable source arrays, prepared on the main thread before chunk workers
 
@@ -3220,11 +3223,12 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 	var slide := kind == "slide"
 	var spring_rider := kind == "spring_rider"
 	var climbing_frame := kind == "climbing_frame"
-	var mesh := merged_model("seesaw", SEESAW_SCENE) if kind == "seesaw" else merged_model("climbing_frame", CLIMBING_FRAME_SCENE) if climbing_frame else merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
+	var mesh := merged_model(kind, SWING_RIDE_SCENE if kind == "swing_carousel" else FERRIS_WHEEL_SCENE) if kind in ["swing_carousel", "ferris_wheel"] else merged_model("carousel", CAROUSEL_SCENE) if kind == "carousel" else merged_model("seesaw", SEESAW_SCENE) if kind == "seesaw" else merged_model("climbing_frame", CLIMBING_FRAME_SCENE) if climbing_frame else merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
 	var bounds := mesh.get_aabb()
 	var scale := minf(3.2 / bounds.size.z, minf(1.8 / bounds.size.y, 0.9 / bounds.size.x)) if slide else minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
 	if spring_rider: scale = 0.8 / bounds.size.y
 	if climbing_frame: scale = minf(2.4 / bounds.size.x, minf(1.6 / bounds.size.y, 2.4 / bounds.size.z))
+	if kind in ["carousel", "swing_carousel", "ferris_wheel"]: scale = 1.0
 	if kind == "seesaw": scale = minf(3.0 / bounds.size.x, minf(0.6 / bounds.size.y, 0.3 / bounds.size.z))
 	var centre := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
 	var basis := Basis(Vector3.UP, PI/2.0) if slide or spring_rider else Basis.IDENTITY
@@ -3243,7 +3247,7 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 	return surfaces
 
 
-static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String) -> void:
+static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String, scale := 1.0) -> void:
 	var placement := Transform3D(Basis(Vector3.UP, angle), to_3d(at))
 	if not out.has("prop_surfaces"): out["prop_surfaces"] = {}
 	var surfaces := prop_model_surfaces(kind)
@@ -3253,7 +3257,7 @@ static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String
 			out.prop_surfaces[key] = {"verts": PackedVector3Array(), "normals": PackedVector3Array(), "uv": PackedVector2Array(), "tangents": PackedFloat32Array(), "material": source.material}
 		var target: Dictionary = out.prop_surfaces[key]
 		for i in source.verts.size():
-			target.verts.append(placement * source.verts[i])
+			target.verts.append(placement * (source.verts[i] * scale))
 			target.normals.append(placement.basis * source.normals[i])
 			var tangent: Vector3 = placement.basis * Vector3(source.tangents[i*4], source.tangents[i*4+1], source.tangents[i*4+2])
 			target.tangents.append_array(PackedFloat32Array([tangent.x, tangent.y, tangent.z, source.tangents[i*4+3]]))
@@ -3435,6 +3439,24 @@ static func power_lines(out: Dictionary, lines: Array) -> void:
 const RIDE_COLORS := [Color8(232, 76, 65), Color8(248, 194, 62), Color8(65, 160, 198), Color8(160, 94, 185)]
 
 
+## Fit the authored ride inside a circle contained by the mapped footprint, without enlarging it.
+static func carousel_scale(loop: PackedVector2Array, centre: Vector2, kind := "carousel") -> float:
+	if loop.size() < 4 or not loop[0].is_equal_approx(loop[-1]) or absf(_signed_area(loop)) < 0.00001 or not Geometry2D.is_point_in_polygon(centre, loop): return 0.0
+	var radius := INF
+	for i in loop.size()-1:
+		radius = minf(radius, centre.distance_to(Geometry2D.get_closest_point_to_segment(centre,loop[i],loop[i+1])))
+	var bounds := merged_model(kind, SWING_RIDE_SCENE if kind == "swing_carousel" else FERRIS_WHEEL_SCENE if kind == "ferris_wheel" else CAROUSEL_SCENE).get_aabb()
+	return minf(1.0, radius / Vector2(bounds.size.x,bounds.size.z).length() * 2.0)
+
+
+static func ride_angle(kind: String, loop: PackedVector2Array, centre: Vector2) -> float:
+	if kind != "ferris_wheel": return 0.0
+	var far := loop[0]
+	for point in loop:
+		if point.distance_squared_to(centre) > far.distance_squared_to(centre) + 0.001: far = point
+	return -(far - centre).angle()
+
+
 static func attractions(out: Dictionary, rows: Array) -> void:
 	for row: Array in rows:
 		var loop: PackedVector2Array = row[1]
@@ -3453,44 +3475,11 @@ static func attractions(out: Dictionary, rows: Array) -> void:
 			"drop_tower":
 				_box3d(out, "deck", centre, 1.2, 0.0, 30.0, Color8(91, 108, 126))
 				_box3d(out, "deck", centre, 2.0, 8.0, 9.0, RIDE_COLORS[0])
-			"carousel", "swing_carousel":
-				var swing := str(row[0]) == "swing_carousel"
-				var top := 7.0 if swing else 4.5
-				_box3d(out, "deck", centre, 0.3, 0.0, top + 0.6, Color8(248, 213, 93))
-				var rim := PackedVector2Array()
-				for i in loop.size() - 1:
-					rim.append(centre + (loop[i] - centre) * (0.45 if swing else 0.72))
-				for i in rim.size():  # coloured wedges of the canopy
-					var wedge := PackedVector2Array([centre, rim[i], rim[(i + 1) % rim.size()]])
-					_raised_polygon_at(out, "deck", wedge, top, top + 0.4, RIDE_COLORS[(i / 6) % 4])
-				if not swing:
-					_raised_polygon_at(out, "deck", loop.slice(0, loop.size() - 1), 0.75, 0.9, Color8(165, 120, 65))
-				for i in range(0, loop.size() - 1, 6):  # the seats out at the rim
-					_box3d(out, "deck", loop[i], 0.6, 0.9 if not swing else 3.0, 1.6 if not swing else 3.6, RIDE_COLORS[(i / 6) % 4])
-					if swing:
-						_sloped_wall(out, loop[i], centre + (loop[i] - centre) * 0.4, 0.06, 3.57, 6.99, 0.06, Color8(210, 210, 215))
-			_:  # a Ferris wheel: across its loop's longest axis, cabins in a vertical ring
-				var far := loop[0]
-				for p in loop:
-					if p.distance_to(centre) > far.distance_to(centre):
-						far = p
-				var radius := maxf(far.distance_to(centre), 3.0)
-				var axis := (far - centre).normalized()
-				var hub := radius + 2.0
-				for side: float in [-1.0, 1.0]:
-					var foot := centre + axis.orthogonal() * 2.0 * side
-					_sloped_wall(out, foot - axis * 3.0, centre + axis.orthogonal() * 0.5 * side, 0.4, 0.0, hub, 0.4, Color8(77, 99, 124))
-					_sloped_wall(out, foot + axis * 3.0, centre + axis.orthogonal() * 0.5 * side, 0.4, 0.0, hub, 0.4, Color8(77, 99, 124))
-				_sloped_wall(out, centre - axis.orthogonal() * 0.6, centre + axis.orthogonal() * 0.6, 0.3, hub - 0.15, hub - 0.15, 0.3, Color8(190, 194, 201))
-				for k in 16:
-					var t := TAU * k / 16.0
-					var at := centre + axis * radius * cos(t)
-					var h := hub + radius * sin(t)
-					_box3d(out, "deck", at, 0.6, h - 0.7, h + 0.7, RIDE_COLORS[k % 4])
-					var next := TAU * (k + 1) / 16.0
-					_sloped_wall(out, at, centre + axis * radius * cos(next), 0.2, h, hub + radius * sin(next), 0.2, Color8(233, 229, 208))
-					# Mid-segment anchors avoid purely vertical spokes, which _sloped_wall cannot build.
-					_sloped_wall(out, centre, centre + axis * radius * (cos(t) + cos(next)) * 0.5, 0.12, hub - 0.06, hub + radius * (sin(t) + sin(next)) * 0.5 + 0.04, 0.12, Color8(190, 194, 201))
+			"carousel", "swing_carousel", "ferris_wheel":
+				var kind := str(row[0])
+				var scale := carousel_scale(loop, centre, kind)
+				if scale > 0.0: _model_prop(out, centre, ride_angle(kind, loop, centre), kind, scale)
+
 
 
 ## Step 6: a biergarten's tables (benches either side, now and then an

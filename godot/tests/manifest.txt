@@ -37,6 +37,9 @@ res://tests/animal_models_packed.gd
 res://tests/taxi_model_parts.gd
 res://tests/vehicle_windscreens.gd
 res://tests/train_coach_roof_vent.gd
+res://tests/carousel_glb.gd
+res://tests/amusement_rides_glb.gd
+
 [excluded]
 res://tests/snow_visibility_render.gd  # native GPU rendered regression: needs a display
 res://tests/animal_audio_render.gd  # render tool: waits for a drawn frame, hangs headless
