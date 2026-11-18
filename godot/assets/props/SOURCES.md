@@ -7,3 +7,11 @@ The unchanged source GLB contains 19,740 triangles, three PBR materials and thre
 The footprint centre is placed at the existing scenery row and feet at local Y=0, with X along the existing row heading. Uniform scale 0.891977990 fits the original 3.4 × 1.8 × 2.2 m length/width/height envelope. Rendered X/Y/Z dimensions are 3.211121 × 2.167507 × 1.800000 m. Chunk terrain height is applied per vertex through the same ground sampling used by other props, with normals/tangents adjusted for that ground slope. Textures and source colours are retained. There is no new collision or simulation data.
 
 SHA-256: `6197b924aba6ea102b8ef9544cc594743ee14d0c05f8018bb2b4edf8bad9a614`.
+
+## Playground Slide
+
+`Playground Slide` by [Grab3D](https://grab3d.com/models/city/playground-slide/), from the Cozy Playground & Gym kit, is offered under CC0 1.0 Universal. Downloaded on 2026-11-18 from https://grab3d.com/dl/playground-slide/playground-slide.glb. The [full CC0 text](CC0-1.0.txt) and [slide source manifest](playground_slide.json) are shipped here; English, Finnish and German in-game credits also identify the source.
+
+The unchanged GLB contains 15,988 triangles and one PBR material. Measured source X/Y/Z dimensions are 1.010913 × 2.058000 × 3.866525 m. Runtime batching bakes the original child transform, centres the ground footprint and rotates +90 degrees around Y to place the downhill chute along local +X. Uniform scale 0.827616594 fits the existing 3.2 × 0.9 × 1.8 m length/width/height envelope; rendered X/Y/Z dimensions are 3.200000 × 1.703235 × 0.836648 m. Source materials, UVs, normals and generated tangents are retained, and terrain height follows the existing prop placement path. No new collision or simulation data is introduced.
+
+SHA-256: `ada2534de7aacd5253ce5fa4b3db1c9107cec3bd9f904243a8b192a90c64c1fe`.

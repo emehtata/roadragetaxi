@@ -380,6 +380,7 @@ static func credits_text(language := "en") -> String:
 		"",
 		"[b]3D models[/b]",
 		T.text("credits_swing", language),
+		T.text("credits_slide", language),
 		"",
 		"[b]Trains[/b]",
 		"Source: Fintraffic / digitraffic.fi, license CC 4.0 BY ([url=https://creativecommons.org/licenses/by/4.0/]creativecommons.org/licenses/by/4.0[/url]). Modified: the passenger timetable and train compositions are condensed for the game.",

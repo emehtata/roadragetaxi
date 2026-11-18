@@ -795,6 +795,8 @@ var _built_view := Vector2.INF
 func _build_2_5d() -> void:
 	if _data.get("scenery_objects", []).any(func(row): return row[2] == "swing"):
 		B3.swing_surfaces()  # instantiate/merge once before any chunk worker reads the cache
+	if _data.get("scenery_objects", []).any(func(row): return row[2] == "slide"):
+		B3.prop_model_surfaces("slide")
 	var started := Time.get_ticks_usec()
 	var buildings: Array = _data.get("buildings", [])
 	var sites: Array = _data.get("construction_fences", [])  # each gets a tower crane in 3D

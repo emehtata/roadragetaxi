@@ -1645,6 +1645,56 @@
         7209727.0,
         -0.586
       ]
+    },
+    {
+      "id": "vqa_slide_glb_day",
+      "description": "VQA-030 Grab3D Playground Slide in a mapped Oulu playground",
+      "why": "Mapped Oulu playground OSM way 893436783 (leisure=playground, access=private). Normal loaded server playground_equipment output includes [427512.1,7209727.6,slide,-0.586]. No prop is injected. Existing sourced Oulu on-road taxi pose and an eye camera inspect the real generated slide; readiness requires all 15,988 GLB triangles and its original material in the final chunk, grounded supports, clear tower/ladder/chute/run-out view and normal map/weather checks.",
+      "city": "Oulu",
+      "pose": [
+        427897.3,
+        7210634.9,
+        2.555
+      ],
+      "camera_at": [
+        427512.1,
+        7209727.6
+      ],
+      "start_time": "2026-06-20T13:00",
+      "weather": "clear",
+      "cloud": 0.1,
+      "wetness": [
+        0,
+        0.05
+      ],
+      "sun_altitude_deg": [
+        30,
+        90
+      ],
+      "zoom": 3,
+      "view": "3d",
+      "requires": {},
+      "measure_s": 1,
+      "server_args": [
+        "--no-auto-fetch",
+        "--no-terrain-dem80"
+      ],
+      "isolated_settings": true,
+      "camera": "eye",
+      "eye": {
+        "at": [
+          427500.0,
+          7209718.6
+        ],
+        "height": 1.15,
+        "yaw": -1.9154776500521553
+      },
+      "box_km": 2.8,
+      "slide_target": [
+        427512.1,
+        7209727.6,
+        -0.586
+      ]
     }
 ]
 }

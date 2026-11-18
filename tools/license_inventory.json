@@ -221,6 +221,26 @@
       "remediation": ""
     },
     {
+      "name": "Grab3D playground prop models (CC0)",
+      "paths": [
+        "godot/assets/props/swing_set*",
+        "godot/assets/props/playground_slide*",
+        "godot/assets/props/SOURCES.md",
+        "godot/assets/props/manifest.json",
+        "godot/assets/props/CC0-1.0.txt"
+      ],
+      "purpose": "textured static swing set and playground slide in the 3D view",
+      "shipped": true,
+      "origin": "grab3d.com Cozy Playground & Gym kit model pages (swing-set and playground-slide); see godot/assets/props/SOURCES.md",
+      "copyright": "not named on the pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "model pages state CC0 1.0 public domain; exact URLs, GLB hashes and transforms in godot/assets/props/manifest.json and playground_slide.json; full CC0 text in godot/assets/props/CC0-1.0.txt",
+      "obligations": "none (CC0); keep source records and fi/en/de in-game credits under the project policy",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
       "name": "Grab3D animal models (CC0)",
       "paths": [
         "godot/assets/animals/*"

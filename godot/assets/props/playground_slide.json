@@ -1,0 +1,39 @@
+{
+  "file": "playground_slide.glb",
+  "title": "Playground Slide",
+  "source": "Grab3D",
+  "kit": "Cozy Playground & Gym",
+  "page_url": "https://grab3d.com/models/city/playground-slide/",
+  "download_url": "https://grab3d.com/dl/playground-slide/playground-slide.glb",
+  "download_date": "2026-11-18",
+  "sha256": "ada2534de7aacd5253ce5fa4b3db1c9107cec3bd9f904243a8b192a90c64c1fe",
+  "bytes": 1042952,
+  "triangles": 15988,
+  "materials": 1,
+  "source_bounds_min_xyz_m": [
+    -0.5054563283920288,
+    -1.4901161193847656e-08,
+    -1.9332623481750488
+  ],
+  "source_bounds_max_xyz_m": [
+    0.5054563283920288,
+    2.058000087738037,
+    1.9332623481750488
+  ],
+  "source_dimensions_xyz_m": [
+    1.0109126567840576,
+    2.0580001026391983,
+    3.8665246963500977
+  ],
+  "yaw_radians": 1.5707963267948966,
+  "uniform_scale": 0.8276165940491005,
+  "rendered_dimensions_xyz_m": [
+    3.2,
+    1.7032350354989525,
+    0.8366480898887491
+  ],
+  "license": "CC0-1.0",
+  "license_url": "https://creativecommons.org/publicdomain/zero/1.0/legalcode",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB bytes unchanged; runtime child-transform merge, ground-centred origin, +90 degree yaw and uniform scale; static pose."
+}

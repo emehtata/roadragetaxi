@@ -3202,33 +3202,44 @@ const WIRE_SPAN_MAX_M := 150.0
 
 
 const SWING_SCENE := preload("res://assets/props/swing_set.glb")
-static var _swing_surfaces := {}  # immutable source arrays, prepared on the main thread before chunk workers
+const SLIDE_SCENE := preload("res://assets/props/playground_slide.glb")
+static var _prop_model_surfaces := {}  # immutable source arrays, prepared on the main thread before chunk workers
 
 
 static func swing_surfaces() -> Dictionary:
-	if not _swing_surfaces.is_empty():
-		return _swing_surfaces
-	var mesh := merged_model("swing_set", SWING_SCENE)
+	return prop_model_surfaces("swing")
+
+
+static func prop_model_surfaces(kind: String) -> Dictionary:
+	if _prop_model_surfaces.has(kind):
+		return _prop_model_surfaces[kind]
+	var slide := kind == "slide"
+	var mesh := merged_model("playground_slide" if slide else "swing_set", SLIDE_SCENE if slide else SWING_SCENE)
 	var bounds := mesh.get_aabb()
-	var scale := minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
+	var scale := minf(3.2 / bounds.size.z, minf(1.8 / bounds.size.y, 0.9 / bounds.size.x)) if slide else minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
 	var centre := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
+	var basis := Basis(Vector3.UP, PI/2.0) if slide else Basis.IDENTITY
+	var surfaces := {}
 	for surface in mesh.get_surface_count():
 		var arrays := mesh.surface_get_arrays(surface)
 		var part := {"verts": PackedVector3Array(), "normals": PackedVector3Array(), "uv": PackedVector2Array(), "tangents": PackedFloat32Array(), "material": mesh.surface_get_material(surface)}
 		for index: int in arrays[Mesh.ARRAY_INDEX]:
-			part.verts.append((arrays[Mesh.ARRAY_VERTEX][index] - centre) * scale)
-			part.normals.append(arrays[Mesh.ARRAY_NORMAL][index])
+			part.verts.append(basis * (arrays[Mesh.ARRAY_VERTEX][index] - centre) * scale)
+			part.normals.append(basis * arrays[Mesh.ARRAY_NORMAL][index])
 			part.uv.append(arrays[Mesh.ARRAY_TEX_UV][index])
-			for k in 4: part.tangents.append(arrays[Mesh.ARRAY_TANGENT][index * 4 + k])
-		_swing_surfaces[surface] = part
-	return _swing_surfaces
+			var tangent: Vector3 = basis * Vector3(arrays[Mesh.ARRAY_TANGENT][index*4], arrays[Mesh.ARRAY_TANGENT][index*4+1], arrays[Mesh.ARRAY_TANGENT][index*4+2])
+			part.tangents.append_array(PackedFloat32Array([tangent.x,tangent.y,tangent.z,arrays[Mesh.ARRAY_TANGENT][index*4+3]]))
+		surfaces[kind+":"+str(surface)] = part
+	_prop_model_surfaces[kind] = surfaces
+	return surfaces
 
 
-static func _swing_prop(out: Dictionary, at: Vector2, angle: float) -> void:
+static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String) -> void:
 	var placement := Transform3D(Basis(Vector3.UP, angle), to_3d(at))
 	if not out.has("prop_surfaces"): out["prop_surfaces"] = {}
-	for key in swing_surfaces():
-		var source: Dictionary = _swing_surfaces[key]
+	var surfaces := prop_model_surfaces(kind)
+	for key in surfaces:
+		var source: Dictionary = surfaces[key]
 		if not out.prop_surfaces.has(key):
 			out.prop_surfaces[key] = {"verts": PackedVector3Array(), "normals": PackedVector3Array(), "uv": PackedVector2Array(), "tangents": PackedFloat32Array(), "material": source.material}
 		var target: Dictionary = out.prop_surfaces[key]
@@ -3245,8 +3256,8 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var look: Array = PROPS.get(row[2], [])
 		if look.is_empty():
 			continue
-		if row[2] == "swing":
-			_swing_prop(out, row[0], float(row[1]))
+		if row[2] in ["swing", "slide"]:
+			_model_prop(out, row[0], float(row[1]), row[2])
 			continue
 		if GAP_KINDS.has(row[2]):
 			_gap_prop(out, row[0], float(row[1]), str(row[2]), float(row[3] if row.size() > 3 else look[2]), look[3])
