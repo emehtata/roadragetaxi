@@ -944,8 +944,12 @@ func _check_map(centre: Vector2) -> Array:
 	if scenario.get("camping_glb",false):
 		for kind in ["caravan_with_car","caravan","tent","camper_van"]:
 			if scenario.has(kind+"_target"):camping_glb[kind]=_check_prop_glb(kind,camera_3d,screen_size,hud,missing)
+	var outdoor_glb := {}
+	if scenario.get("outdoor_glb",false):
+		for kind in ["picnic_table"]:
+			if scenario.has(kind+"_target"):outdoor_glb[kind]=_check_prop_glb(kind,camera_3d,screen_size,hud,missing)
 	var camp_pair := {}
-	if not scenario.get("camping_glb",false) and (scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target")):
+	if not scenario.get("outdoor_glb",false) and not scenario.get("camping_glb",false) and (scenario.has("caravan_with_car_target") or scenario.has("tent_target") or scenario.has("bicycle_parking_target") or scenario.has("picnic_table_target")):
 		var picnic:=scenario.has("picnic_table_target")
 		var tent:=scenario.has("tent_target")
 		var rack:=scenario.has("bicycle_parking_target")
@@ -1036,7 +1040,7 @@ func _check_map(centre: Vector2) -> Array:
 					camp_pair={"position":[row[0],row[1]],"angle":row[3],"active_3d":true,"region_rects":regions,"rect":[bounds.position.x,bounds.position.y,bounds.size.x,bounds.size.y],"matched_vertices":expected.deck.size(),"ground_m":Buildings3D.ground_height(chunk.ground_heights,at),"envelope_m":[1.8,1.5] if picnic else [3.0,0.6] if rack else [3.2,2.4] if tent else [9.4,2.5]}
 		if not found:missing.append("expected mapped camping geometry not drawn")
 	var crossbuck := {}
-	if scenario.has("crossbuck_target"):
+	if scenario.has("crossbuck_target") and not scenario.get("outdoor_glb",false):
 		var target: Array=scenario["crossbuck_target"]
 		var layer=layer_3d_view()
 		var found:=false
@@ -1458,6 +1462,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not carousel_glb.is_empty(): _counts["carousel_glb"] = carousel_glb
 	if not swing_ride_glb.is_empty(): _counts["swing_ride_glb"] = swing_ride_glb
 	if not ferris_wheel_glb.is_empty(): _counts["ferris_wheel_glb"] = ferris_wheel_glb
+	if not outdoor_glb.is_empty(): _counts["outdoor_glb"] = outdoor_glb
 	if not camping_glb.is_empty(): _counts["camping_glb"] = camping_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
@@ -1779,6 +1784,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if camera == null: return {}
 	var target: Array = scenario[kind+"_target"]
 	var ride := kind in ["carousel","swing_carousel","ferris_wheel"]
+	var outdoor := kind == "picnic_table"
 	var camping := kind in ["caravan_with_car","caravan","tent","camper_van"]
 	var layer = layer_3d_view()
 	var triangles := 17858 if kind == "spring_rider" else (15988 if kind == "slide" else 19740)
@@ -1788,6 +1794,9 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if kind == "carousel": triangles = 21956; material_count = 3
 	if kind == "swing_carousel": triangles = 18532; material_count = 3
 	if kind == "ferris_wheel": triangles = 39652; material_count = 3
+	if outdoor:
+		triangles=5544
+		material_count=1
 	if camping:
 		triangles={"caravan_with_car":38695,"caravan":19387,"tent":14428,"camper_van":45436}[kind]
 		material_count={"caravan_with_car":36,"caravan":18,"tent":3,"camper_van":9}[kind]
@@ -1829,7 +1838,7 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 							actual.append_array(mesh.mesh.get_faces());nodes.append(mesh)
 					matched = matched and _swing_faces_present(actual,part.verts)
 					faces.append_array(part.verts)
-					if ride or camping:
+					if ride or camping or outdoor:
 						var triangles_mesh := TriangleMesh.new();triangles_mesh.create_from_faces(part.verts);own_geometry[part.material]=triangles_mesh
 				var bounds := AABB(faces[0],Vector3.ZERO)
 				for v: Vector3 in faces: bounds=bounds.expand(v)
@@ -1868,9 +1877,10 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 			if kind=="caravan":probes=[Vector3(0,1.8,0),Vector3(2.5,0.5,0),Vector3(-0.4,0.2,0.8)]
 			if kind=="camper_van":probes=[Vector3(1.4,1.0,0),Vector3(-1.0,1.8,0),Vector3(1.3,0.1,0.8)]
 			if kind == "seesaw": probes = [Vector3(-0.60,0.18,0),Vector3(0.60,0.45,0),Vector3(0,0.15,0),Vector3(0,0.29,0)]
+			if kind=="picnic_table":probes=[Vector3(0,0.73,0),Vector3(0,0.42,0.6),Vector3(0,0.42,-0.6),Vector3(0,0.25,0)]
 			var foot_probes := {}
 			for local: Vector3 in cached.feet:
-				if ride or camping:foot_probes[Vector2(signf(local.x),signf(local.z))]=local+Vector3.UP*0.03
+				if ride or camping or outdoor:foot_probes[Vector2(signf(local.x),signf(local.z))]=local+Vector3.UP*0.03
 				else:probes.append(local+Vector3.UP*0.03)
 				var foot: Vector3 = placement*local
 				foot.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
@@ -1884,22 +1894,22 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 				point = frame.global_transform*point
 				for other in main.map_layer._chunks.values():
 					for solid: MeshInstance3D in other.meshes_3d:
-						if not solid.is_visible_in_tree() or solid.mesh==null or solid.layers & camera.cull_mask==0 or (not ride and not camping and solid in cached.nodes): continue
+						if not solid.is_visible_in_tree() or solid.mesh==null or solid.layers & camera.cull_mask==0 or (not ride and not camping and not outdoor and solid in cached.nodes): continue
 						var inverse := solid.global_transform.affine_inverse()
 						if solid.get_aabb().intersects_segment(inverse*camera.global_position,inverse*point) == null: continue
 						if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
 						var hit:Dictionary=_felled_occluders[solid.mesh].intersect_segment(inverse*camera.global_position,inverse*point)
 						if hit.is_empty():continue
 						# Ignore only the target's exact surfaces, including copies in adjacent chunks.
-						if (ride or camping) and cached.own_geometry.has(solid.material_override):
+						if (ride or camping or outdoor) and cached.own_geometry.has(solid.material_override):
 							var own_inverse:=frame.global_transform.affine_inverse()
 							var world_hit:Vector3=solid.global_transform*hit.position
 							var ray:Vector3=(point-camera.global_position).normalized()*0.02
 							var own_hit:Dictionary=cached.own_geometry[solid.material_override].intersect_segment(own_inverse*(world_hit-ray),own_inverse*(world_hit+ray))
-							# Layered camping body faces can pick different hits within the 2 cm verification segment.
-							if not own_hit.is_empty() and (frame.global_transform*own_hit.position).distance_to(world_hit)<(0.025 if camping else 0.01):continue
+							# Layered model faces can pick different hits within the 2 cm verification segment.
+							if not own_hit.is_empty() and (frame.global_transform*own_hit.position).distance_to(world_hit)<(0.025 if camping or outdoor else 0.01):continue
 						missing.append(kind+" feature "+str(local)+" hidden by "+str(solid.get_meta("prop_material",solid.material_override.shader.resource_path if solid.material_override is ShaderMaterial else solid.material_override)))
-			return {"position":[target[0],target[1]],"angle":angle,"triangles":cached.vertex_count/3,"materials":material_count,"matched_final_geometry":true,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"foot_error_m":foot_error,"osm_playground_way":893436783 if not ride and not camping else 0,"osm_camp_pitch":scenario.get("osm_camp_pitch",0),"streamed_length_m":float(target[3]) if kind=="camper_van" else 0,"osm_theme_park_relation":1300537 if ride else 0}
+			return {"position":[target[0],target[1]],"angle":angle,"triangles":cached.vertex_count/3,"materials":material_count,"matched_final_geometry":true,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"foot_error_m":foot_error,"osm_playground_way":893436783 if not ride and not camping and not outdoor else 0,"osm_node":scenario.get("osm_node",0),"osm_camp_pitch":scenario.get("osm_camp_pitch",0),"streamed_length_m":float(target[3]) if kind=="camper_van" else 0,"osm_theme_park_relation":1300537 if ride else 0}
 	missing.append("expected generated "+kind+" in mapped playground not loaded")
 	return {}
 

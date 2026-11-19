@@ -806,7 +806,7 @@ func _build_2_5d() -> void:
 		B3.prop_model_surfaces("climbing_frame")
 	if _data.get("scenery_objects", []).any(func(row): return row[2] == "seesaw"):
 		B3.prop_model_surfaces("seesaw")
-	for kind: String in ["caravan_with_car", "caravan", "tent", "camper_van"]:
+	for kind: String in ["caravan_with_car", "caravan", "tent", "camper_van", "picnic_table"]:
 		if _data.get("scenery_objects", []).any(func(row): return row[2] == kind):
 			B3.prop_model_surfaces(kind)
 	var started := Time.get_ticks_usec()

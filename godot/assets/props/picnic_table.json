@@ -1,0 +1,26 @@
+{
+  "file": "picnic_table.glb",
+  "title": "Picnic Table",
+  "source": "Grab3D",
+  "kit": "Cozy Playground & Gym",
+  "page_url": "https://grab3d.com/models/furniture/picnic-table/",
+  "download_url": "https://grab3d.com/dl/picnic-table/picnic-table.glb",
+  "download_date": "2026-11-18",
+  "sha256": "546863abd51e4633031b996f73bd742184374fd2b5adc767ea3415aeb40baff7",
+  "triangles": 5544,
+  "materials": 1,
+  "source_bounds_min_xyz_m": [
+    -0.9,
+    0,
+    -0.809
+  ],
+  "source_dimensions_xyz_m": [
+    1.8,
+    0.7632,
+    1.618
+  ],
+  "uniform_scale": 0.9270704573547589,
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "modifications": "Source GLB unchanged; baked child transforms and ground-centred origin. Uniform envelope fit."
+}

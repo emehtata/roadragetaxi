@@ -4251,34 +4251,9 @@ func _picnic_table(at := Vector2.ZERO, angle := 0.0) -> Dictionary:
 
 
 func test_picnic_table_has_seats_and_open_supports() -> void:
-	for angle:float in [0.0,PI/2.0,PI,0.73]:
-		for at:Vector2 in [Vector2.ZERO,Vector2(17,-23)]:
-			var out:=_picnic_table(at,angle)
-			var inverse:=Transform3D(Basis(Vector3.UP,angle),B3.to_3d(at)).affine_inverse()
-			var local:=PackedVector3Array()
-			for v:Vector3 in out.deck:local.append(inverse*v)
-			check(Array(local).all(func(v):return absf(v.x)<=0.901 and absf(v.z)<=0.751 and v.y>=-0.001 and v.y<=0.751),"picnic table retains1.8x1.5x0.75m envelope")
-			check(Array(local).all(func(v):return [0.0,0.38,0.44,0.69,0.75].any(func(y):return absf(v.y-y)<0.001)),"tabletop and bench slabs are6cm thick at preserved heights")
-			check(Array(local).all(func(v):return v.y<=0.001 or v.y>=0.38-0.001 or absf(absf(v.x)-0.648)<0.041),"only slender end supports reach below seats")
-			for x:float in [-0.648,0.648]:
-				for z:float in [-0.625,-0.275,0.275,0.625]:
-					var top:=0.38 if absf(z)>0.5 else 0.69
-					check(_ferris_surface_crosses(local,Vector3(x,top*0.5,z),Vector3.RIGHT,0.041),"each table/bench has grounded slender supports")
-					check(Array(local).any(func(v):return absf(v.x-x)<0.041 and absf(v.z-z)<0.041 and absf(v.y)<0.001),"all support feet meet ground")
-					check(_ferris_surface_crosses(local,Vector3(x,top,z),Vector3.UP,0.006),"every support meets its seat/table within5mm")
-			for x:float in [-0.8,0.0,0.8]:
-				check(_ferris_surface_crosses(local,Vector3(x,0.75,0.08),Vector3.UP,0.006),"raised tabletop spans row")
-				for side:float in [-1.0,1.0]:
-					check(_ferris_surface_crosses(local,Vector3(x,0.44,side*0.625),Vector3.UP,0.006),"two separate bench tops at44cm")
-			for y:float in [0.05,0.2,0.35,0.6]:
-				for z:float in [-0.225,0,0.225]:
-					check(not _ferris_surface_crosses(local,Vector3(0,y,z),Vector3.RIGHT,0.4),"central knee/leg space remains open")
-			for side:float in [-1.0,1.0]:
-				check(not _ferris_surface_crosses(local,Vector3(0,0.55,side*0.625),Vector3.UP,0.08),"clear gap above both seats")
-			for i in range(0,local.size(),3):
-				check((local[i+1]-local[i]).cross(local[i+2]-local[i]).length()>0.00001,"picnic triangles nondegenerate")
-			check(Array(out.deck_colors).all(func(c):return c==Color8(130,92,58)),"picnic wood palette retained")
-
+	var out:=_picnic_table()
+	check(out.deck.is_empty() and out.prop_surfaces.size()==1,"picnic table uses full textured kit model")
+	check(out.prop_surfaces.values()[0].verts.size()==5544*3,"all authored table/seat/support triangles retained")
 
 func test_picnic_table_geometry_preserved() -> void:
 	check(B3.PROPS.picnic_table==[1.8,1.5,0.75,Color8(130,92,58)],"picnic table dimensions retained")

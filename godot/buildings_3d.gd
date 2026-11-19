@@ -3202,6 +3202,8 @@ const WIRE_M := 8.6  # the crossarm's height: where the wires hang
 const WIRE_SPAN_MAX_M := 150.0
 
 
+const PICNIC_TABLE_SCENE := preload("res://assets/props/picnic_table.glb")
+
 const TRAVEL_TRAILER_SCENE := preload("res://assets/props/travel_trailer.glb")
 const STATION_WAGON_SCENE := preload("res://assets/props/station_wagon.glb")
 const TENT_SCENE := preload("res://assets/props/a_frame_tent.glb")
@@ -3231,12 +3233,13 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 	var slide := kind == "slide"
 	var spring_rider := kind == "spring_rider"
 	var climbing_frame := kind == "climbing_frame"
-	var mesh := merged_model(kind, SWING_RIDE_SCENE if kind == "swing_carousel" else FERRIS_WHEEL_SCENE) if kind in ["swing_carousel", "ferris_wheel"] else merged_model("carousel", CAROUSEL_SCENE) if kind == "carousel" else merged_model("seesaw", SEESAW_SCENE) if kind == "seesaw" else merged_model("climbing_frame", CLIMBING_FRAME_SCENE) if climbing_frame else merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
+	var mesh := merged_model(kind, PICNIC_TABLE_SCENE) if kind == "picnic_table" else merged_model(kind, SWING_RIDE_SCENE if kind == "swing_carousel" else FERRIS_WHEEL_SCENE) if kind in ["swing_carousel", "ferris_wheel"] else merged_model("carousel", CAROUSEL_SCENE) if kind == "carousel" else merged_model("seesaw", SEESAW_SCENE) if kind == "seesaw" else merged_model("climbing_frame", CLIMBING_FRAME_SCENE) if climbing_frame else merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
 	var bounds := mesh.get_aabb()
 	var scale := minf(3.2 / bounds.size.z, minf(1.8 / bounds.size.y, 0.9 / bounds.size.x)) if slide else minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
 	if spring_rider: scale = 0.8 / bounds.size.y
 	if climbing_frame: scale = minf(2.4 / bounds.size.x, minf(1.6 / bounds.size.y, 2.4 / bounds.size.z))
 	if kind in ["carousel", "swing_carousel", "ferris_wheel"]: scale = 1.0
+	if kind == "picnic_table": scale = minf(1.8 / bounds.size.x, minf(0.75 / bounds.size.y, 1.5 / bounds.size.z))
 	if kind == "seesaw": scale = minf(3.0 / bounds.size.x, minf(0.6 / bounds.size.y, 0.3 / bounds.size.z))
 	var centre := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
 	var basis := Basis(Vector3.UP, PI/2.0) if slide or spring_rider else Basis.IDENTITY
@@ -3325,7 +3328,8 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 		var look: Array = PROPS.get(row[2], [])
 		if look.is_empty():
 			continue
-		if row[2] in ["swing", "slide", "spring_rider", "climbing_frame", "seesaw"]:
+		if row[2] in ["swing", "slide", "spring_rider", "climbing_frame", "seesaw", "picnic_table"]:
+			if not (row[0] as Vector2).is_finite() or not is_finite(float(row[1])): continue
 			_model_prop(out, row[0], float(row[1]), row[2])
 			continue
 		if GAP_KINDS.has(row[2]):
@@ -3349,19 +3353,6 @@ static func props(out: Dictionary, rows: Array) -> void:  # rows [position, angl
 				for member: Array in [[-0.3, -0.24, 0.0, 0.8], [0.24, 0.3, 0.0, 0.8], [-0.3, 0.3, 0.74, 0.8]]:
 					_raised_polygon_at(out, "deck", PackedVector2Array([centre - u + v * member[0], centre + u + v * member[0],
 						centre + u + v * member[1], centre - u + v * member[1]]), member[2], member[3], look[3])
-			continue
-		if row[2] == "picnic_table":
-			var u := along.normalized()
-			var v := across.normalized()
-			var piece := func(x: float, z: float, half_x: float, half_z: float, bottom: float, top: float) -> void:
-				var centre := at + u * x + v * z
-				_raised_polygon_at(out, "deck", PackedVector2Array([centre-u*half_x-v*half_z,centre+u*half_x-v*half_z,centre+u*half_x+v*half_z,centre-u*half_x+v*half_z]), bottom, top, look[3])
-			piece.call(0.0, 0.0, length * 0.5, 0.35, 0.69, 0.75)
-			for side: float in [-1.0, 1.0]:
-				piece.call(0.0, side * 0.625, length * 0.5, 0.125, 0.38, 0.44)
-				for end: float in [-1.0, 1.0]:
-					piece.call(end * length * 0.36, side * 0.275, 0.04, 0.04, 0.0, 0.69)
-					piece.call(end * length * 0.36, side * 0.625, 0.04, 0.04, 0.0, 0.38)
 			continue
 		if row[2] == "bench":
 			_bench(out, at, along, across, look[3], row.size() < 5 or bool(row[4]))

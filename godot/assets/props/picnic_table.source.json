@@ -1,0 +1,47 @@
+{
+ "slug": "picnic-table",
+ "triangles": 5544,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "picnic-table.glb",
+   "bytes": 606144
+  },
+  "blend": {
+   "name": "picnic-table.blend",
+   "bytes": 551325
+  },
+  "fbx": {
+   "name": "picnic-table.fbx",
+   "bytes": 967948
+  },
+  "obj": {
+   "name": "picnic-table-obj.zip",
+   "bytes": 548076
+  },
+  "usdz": {
+   "name": "picnic-table.usdz",
+   "bytes": 932121
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.800 x 1.618 x 0.763",
+  "triangles": 5544,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "wooden picnic table with attached benches, table top 1.80 x 0.79 m at 76 cm, benches at 45 cm, overall approx. 1.80 x 1.62 x 0.76 m",
+  "notes": "light wood with visible grain: six top planks with a 6 cm parasol hole and steel ring in the centre, two attached two-plank benches, two A-frame leg sets with cross rails, diagonal braces and steel carriage bolts; no moving parts, no text",
+  "set": "Cozy Playground & Gym Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}
