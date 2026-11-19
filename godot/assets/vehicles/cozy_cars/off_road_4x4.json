@@ -1,0 +1,339 @@
+{
+  "file": "godot/assets/vehicles/cozy_cars/off_road_4x4.glb",
+  "kind": "suv",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/off-road-4x4/",
+  "download_url": "https://grab3d.com/dl/off-road-4x4/off-road-4x4.glb",
+  "download_date": "2026-11-19",
+  "sha256": "58e4b3f6e1bf16a37bacf171d5d40b914429a37e7ff41cbe65dd71004688bfa9",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "triangles": 19882,
+  "source_bounds_min_xyz_m": [
+    -1.0726330280304,
+    0.0,
+    -2.47995972633362
+  ],
+  "source_dimensions_xyz_m": [
+    2.14526605606079,
+    2.53000020980835,
+    4.95991945266724
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -1.0726330280304,
+        0.351498782634735,
+        -2.12004017829895
+      ],
+      "name": "off-road-4x4_body",
+      "size": [
+        2.14526605606079,
+        2.17850136756897,
+        4.59999990463257
+      ]
+    },
+    {
+      "min": [
+        -0.621498346328735,
+        0.598197519779205,
+        -2.47995972633362
+      ],
+      "name": "off-road-4x4_rear_door",
+      "size": [
+        1.24299693107605,
+        1.26223587989807,
+        0.465924263000488
+      ]
+    },
+    {
+      "min": [
+        0.680080533027649,
+        0.0,
+        0.999959707260132
+      ],
+      "name": "off-road-4x4_wheel_fl",
+      "size": [
+        0.279838800430298,
+        0.800000011920929,
+        0.799999952316284
+      ]
+    },
+    {
+      "min": [
+        -0.959919452667236,
+        0.0,
+        0.999959707260132
+      ],
+      "name": "off-road-4x4_wheel_fr",
+      "size": [
+        0.279838800430298,
+        0.800000011920929,
+        0.799999952316284
+      ]
+    },
+    {
+      "min": [
+        0.680080652236938,
+        0.0,
+        -1.66004025936127
+      ],
+      "name": "off-road-4x4_wheel_rl",
+      "size": [
+        0.279838800430298,
+        0.800000011920929,
+        0.799999952316284
+      ]
+    },
+    {
+      "min": [
+        -0.959919333457947,
+        0.0,
+        -1.66004025936127
+      ],
+      "name": "off-road-4x4_wheel_rr",
+      "size": [
+        0.279838800430298,
+        0.800000011920929,
+        0.799999952316284
+      ]
+    },
+    {
+      "min": [
+        -0.869587659835815,
+        1.29876732826233,
+        -1.81870806217194
+      ],
+      "name": "off-road-4x4_windows",
+      "size": [
+        1.73917531967163,
+        0.598966598510742,
+        2.29464530944824
+      ]
+    }
+  ],
+  "source_materials": [
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "off-road-4x4_body_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/off_road_4x4_off-road-4x4_body_basecolor.jpg"
+    },
+    {
+      "color": [
+        0.662745118141174,
+        0.780392169952393,
+        0.607843101024628
+      ],
+      "name": "off-road-4x4_paint_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "off-road-4x4_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "off-road-4x4_tire_x",
+      "texture": "res://assets/vehicles/cozy_cars/off_road_4x4_off-road-4x4_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "off-road-4x4_rim_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.662745118141174,
+        0.780392169952393,
+        0.607843101024628
+      ],
+      "name": "off-road-4x4_hubcap_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "off-road-4x4_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_cars/off_road_4x4_off-road-4x4_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "off-road-4x4_rim_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.662745118141174,
+        0.780392169952393,
+        0.607843101024628
+      ],
+      "name": "off-road-4x4_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "off-road-4x4_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "off-road-4x4_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_cars/off_road_4x4_off-road-4x4_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "off-road-4x4_rim_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.662745118141174,
+        0.780392169952393,
+        0.607843101024628
+      ],
+      "name": "off-road-4x4_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "off-road-4x4_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "off-road-4x4_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_cars/off_road_4x4_off-road-4x4_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "off-road-4x4_rim_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.662745118141174,
+        0.780392169952393,
+        0.607843101024628
+      ],
+      "name": "off-road-4x4_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "off-road-4x4_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "off-road-4x4_tire_x.004",
+      "texture": "res://assets/vehicles/cozy_cars/off_road_4x4_off-road-4x4_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "off-road-4x4_rim_x.004",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.662745118141174,
+        0.780392169952393,
+        0.607843101024628
+      ],
+      "name": "off-road-4x4_hubcap_x.004",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "off-road-4x4_trim_charcoal_x.004",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.890196084976196,
+        0.933333396911621
+      ],
+      "name": "off-road-4x4_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "runtime": "Primary suv body. Source bytes unchanged; bake child transforms; deduplicate equivalent source wheel materials; uniform min(sim_length/source_length,sim_width/source_width), source+Z forward; preserve PBR textures and all source parts. Runtime paint hue mask preserves atlas trim, glass and tire materials. Shader emission selects authored front yellow/rear red lens pixels; source-fit reverse/indicator overlays and taxi sign follow full pitch/roll/elevation. No simulation changes.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.14,
+    "rear_max_z": -2.01,
+    "front_y_range": [
+      0.78,
+      1.12
+    ],
+    "rear_y_range": [
+      0.7,
+      1.02
+    ]
+  },
+  "lamp_adaptation": "Native colored lens texels are classified in source sRGB within measured spatial regions. Reverse/indicator overlay centres are placed against cached source-triangle intersections at the measured lens heights (at most5cm contact error), then uniformly scaled and transformed with full body pitch/roll. Source materials/GLB bytes remain unchanged."
+}

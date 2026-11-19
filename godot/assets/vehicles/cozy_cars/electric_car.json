@@ -1,0 +1,334 @@
+{
+  "file": "godot/assets/vehicles/cozy_cars/electric_car.glb",
+  "kind": "saloon",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/electric-car/",
+  "download_url": "https://grab3d.com/dl/electric-car/electric-car.glb",
+  "download_date": "2026-11-19",
+  "sha256": "8153199eac19abe67fc035c3b457fe635a5c41ed04478f8eeaf4d0b9c43329f2",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "triangles": 17770,
+  "source_bounds_min_xyz_m": [
+    -0.957725405693054,
+    0.0,
+    -2.26623678207397
+  ],
+  "source_dimensions_xyz_m": [
+    1.9154509305954,
+    1.45000016689301,
+    4.53247356414795
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.957725405693054,
+        0.200000002980232,
+        -2.26623678207397
+      ],
+      "name": "electric-car_body",
+      "size": [
+        1.9154509305954,
+        1.25000011920929,
+        4.53247356414795
+      ]
+    },
+    {
+      "min": [
+        0.784112095832825,
+        0.740387797355652,
+        -2.0002589225769
+      ],
+      "name": "electric-car_charge_flap",
+      "size": [
+        0.0592217445373535,
+        0.125787973403931,
+        0.201896190643311
+      ]
+    },
+    {
+      "min": [
+        0.785167992115021,
+        0.743700623512268,
+        -1.95139634609222
+      ],
+      "name": "electric-car_charge_port",
+      "size": [
+        0.0353847742080688,
+        0.110147655010223,
+        0.109930753707886
+      ]
+    },
+    {
+      "min": [
+        0.655066072940826,
+        0.0,
+        1.03223741054535
+      ],
+      "name": "electric-car_wheel_fl",
+      "size": [
+        0.229867577552795,
+        0.699999988079071,
+        0.700000047683716
+      ]
+    },
+    {
+      "min": [
+        -0.884933888912201,
+        0.0,
+        1.03223741054535
+      ],
+      "name": "electric-car_wheel_fr",
+      "size": [
+        0.229867577552795,
+        0.699999988079071,
+        0.700000047683716
+      ]
+    },
+    {
+      "min": [
+        0.655066192150116,
+        0.0,
+        -1.74776256084442
+      ],
+      "name": "electric-car_wheel_rl",
+      "size": [
+        0.229867577552795,
+        0.699999988079071,
+        0.700000047683716
+      ]
+    },
+    {
+      "min": [
+        -0.884933769702911,
+        0.0,
+        -1.74776256084442
+      ],
+      "name": "electric-car_wheel_rr",
+      "size": [
+        0.229867577552795,
+        0.699999988079071,
+        0.700000047683716
+      ]
+    },
+    {
+      "min": [
+        -0.747620284557343,
+        0.942058563232422,
+        -1.94568765163422
+      ],
+      "name": "electric-car_windows",
+      "size": [
+        1.49524092674255,
+        0.492479562759399,
+        3.04868745803833
+      ]
+    }
+  ],
+  "source_materials": [
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "electric-car_body_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/electric_car_electric-car_body_basecolor.jpg"
+    },
+    {
+      "color": [
+        0.611764669418335,
+        0.7843137383461,
+        0.933333396911621
+      ],
+      "name": "electric-car_paint_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "electric-car_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.623529434204102,
+        0.850980341434479,
+        0.768627464771271
+      ],
+      "name": "electric-car_charge_port_ring_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "electric-car_tire_x",
+      "texture": "res://assets/vehicles/cozy_cars/electric_car_electric-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "electric-car_rim_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "electric-car_hubcap_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "electric-car_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "electric-car_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_cars/electric_car_electric-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "electric-car_rim_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "electric-car_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "electric-car_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "electric-car_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_cars/electric_car_electric-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "electric-car_rim_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "electric-car_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "electric-car_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "electric-car_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_cars/electric_car_electric-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "electric-car_rim_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "electric-car_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "electric-car_trim_charcoal_x.004",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.890196084976196,
+        0.933333396911621
+      ],
+      "name": "electric-car_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "runtime": "Primary saloon body. Source bytes unchanged; bake child transforms; deduplicate equivalent source wheel materials; uniform min(sim_length/source_length,sim_width/source_width), source+Z forward; preserve PBR textures and all source parts. Runtime paint hue mask preserves atlas trim, glass and tire materials. Shader emission selects authored front yellow/rear red lens pixels; source-fit reverse/indicator overlays and taxi sign follow full pitch/roll/elevation. No simulation changes.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.1,
+    "rear_max_z": -2.18,
+    "front_y_range": [
+      0.6,
+      0.77
+    ],
+    "rear_y_range": [
+      0.77,
+      0.9
+    ]
+  },
+  "lamp_adaptation": "Native colored lens texels are classified in source sRGB within measured spatial regions. Reverse/indicator overlay centres are placed against cached source-triangle intersections at the measured lens heights (at most5cm contact error), then uniformly scaled and transformed with full body pitch/roll. Source materials/GLB bytes remain unchanged."
+}

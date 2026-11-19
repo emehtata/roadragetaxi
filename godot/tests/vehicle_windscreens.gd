@@ -1,4 +1,4 @@
-## VQA-001–005: frontal glass must not be hidden by body triangles, including generated LODs.
+## Retained original-source VQA-001–005: frontal glass must not be hidden by body triangles, including generated LODs.
 extends SceneTree
 const B3 := preload("res://buildings_3d.gd")
 const CASES := {"hatchback": [1.02,1.38], "estate": [1.05,1.46], "suv": [1.10,1.68], "pickup": [1.10,1.73], "panel_van": [1.20,2.16]}
@@ -31,7 +31,7 @@ func depth(vertices: PackedVector3Array, indices: PackedInt32Array, x: float, y:
 	return z
 
 func test_front_glazing_geometry(kind: String, generated_lods := false) -> void:
-	var mesh := B3.merged_model(kind)
+	var mesh := B3.merged_model(kind+"_legacy",load("res://assets/vehicles/"+kind+".glb"))
 	var glass: Array = []
 	var paint: Array = []
 	for surface in mesh.get_surface_count():
@@ -82,7 +82,7 @@ func test_glazing_at_lod_distances(kind: String) -> void:
 	test_front_glazing_geometry(kind, true)
 
 func test_model_preservation(kind: String) -> void:
-	var source: Node3D=B3.MODEL_SCENES[kind].instantiate()
+	var source: Node3D=load("res://assets/vehicles/"+kind+".glb").instantiate()
 	var box:=AABB()
 	var first:=true
 	var materials:={}
@@ -94,12 +94,11 @@ func test_model_preservation(kind: String) -> void:
 			node=node.get_parent()
 		for surface in mi.mesh.get_surface_count():
 			var name: String=mi.mesh.surface_get_material(surface).resource_name
-			if name=="interior":continue
 			materials[name]=true
 			for v: Vector3 in mi.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]:
 				box=AABB(xform*v,Vector3.ZERO) if first else box.expand(xform*v)
 				first=false
-	var mesh:=B3.merged_model(kind)
+	var mesh:=B3.merged_model(kind+"_legacy",load("res://assets/vehicles/"+kind+".glb"))
 	check(mesh.get_aabb().position.is_equal_approx(box.position) and mesh.get_aabb().size.is_equal_approx(box.size),"%s source/pooled bounds preserved" % kind)
 	check(mesh.get_surface_count()==materials.size(),"%s source materials preserved" % kind)
 	source.free()

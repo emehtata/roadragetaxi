@@ -1,0 +1,317 @@
+{
+  "file": "godot/assets/vehicles/cozy_cars/coupe.glb",
+  "kind": "sports",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/coupe/",
+  "download_url": "https://grab3d.com/dl/coupe/coupe.glb",
+  "download_date": "2026-11-19",
+  "sha256": "916abde62feaf95f1a0171277013c6adbe84461967016ad1900b508b0094c4b1",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "triangles": 16856,
+  "source_bounds_min_xyz_m": [
+    -0.907499074935913,
+    0.0,
+    -2.34862804412842
+  ],
+  "source_dimensions_xyz_m": [
+    1.81499826908112,
+    1.37000000476837,
+    4.69725608825684
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.907499074935913,
+        0.200000002980232,
+        -2.34862804412842
+      ],
+      "name": "coupe_body",
+      "size": [
+        1.81499826908112,
+        1.16999995708466,
+        4.69725608825684
+      ]
+    },
+    {
+      "min": [
+        0.595060288906097,
+        0.0,
+        1.04137206077576
+      ],
+      "name": "coupe_wheel_fl",
+      "size": [
+        0.209879159927368,
+        0.620000004768372,
+        0.620000123977661
+      ]
+    },
+    {
+      "min": [
+        -0.804939687252045,
+        0.0,
+        1.04137206077576
+      ],
+      "name": "coupe_wheel_fr",
+      "size": [
+        0.209879100322723,
+        0.620000004768372,
+        0.620000123977661
+      ]
+    },
+    {
+      "min": [
+        0.595060408115387,
+        0.0,
+        -1.57862782478333
+      ],
+      "name": "coupe_wheel_rl",
+      "size": [
+        0.209879159927368,
+        0.620000004768372,
+        0.619999945163727
+      ]
+    },
+    {
+      "min": [
+        -0.804939568042755,
+        0.0,
+        -1.57862782478333
+      ],
+      "name": "coupe_wheel_rr",
+      "size": [
+        0.209879100322723,
+        0.620000004768372,
+        0.619999945163727
+      ]
+    },
+    {
+      "min": [
+        -0.699866414070129,
+        0.835772037506104,
+        -1.14542257785797
+      ],
+      "name": "coupe_windows",
+      "size": [
+        1.39973294734955,
+        0.376205086708069,
+        1.6441468000412
+      ]
+    }
+  ],
+  "source_materials": [
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "coupe_body_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/coupe_coupe_body_basecolor.jpg"
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "coupe_tire_x",
+      "texture": "res://assets/vehicles/cozy_cars/coupe_coupe_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "coupe_rim_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.658823549747467,
+        0.901960790157318
+      ],
+      "name": "coupe_hubcap_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "coupe_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "coupe_trim_white_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "coupe_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_cars/coupe_coupe_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "coupe_rim_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.658823549747467,
+        0.901960790157318
+      ],
+      "name": "coupe_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "coupe_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "coupe_trim_white_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "coupe_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_cars/coupe_coupe_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "coupe_rim_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.658823549747467,
+        0.901960790157318
+      ],
+      "name": "coupe_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "coupe_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "coupe_trim_white_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "coupe_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_cars/coupe_coupe_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "coupe_rim_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.658823549747467,
+        0.901960790157318
+      ],
+      "name": "coupe_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "coupe_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "coupe_trim_white_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.890196084976196,
+        0.933333396911621
+      ],
+      "name": "coupe_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "runtime": "Primary sports body. Source bytes unchanged; bake child transforms; deduplicate equivalent source wheel materials; uniform min(sim_length/source_length,sim_width/source_width), source+Z forward; preserve PBR textures and all source parts. Runtime paint hue mask preserves atlas trim, glass and tire materials. Shader emission selects authored front yellow/rear red lens pixels; source-fit reverse/indicator overlays and taxi sign follow full pitch/roll/elevation. No simulation changes.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.19,
+    "rear_max_z": -2.14,
+    "front_y_range": [
+      0.42,
+      0.64
+    ],
+    "rear_y_range": [
+      0.5,
+      0.66
+    ]
+  },
+  "lamp_adaptation": "Native colored lens texels are classified in source sRGB within measured spatial regions. Reverse/indicator overlay centres are placed against cached source-triangle intersections at the measured lens heights (at most5cm contact error), then uniformly scaled and transformed with full body pitch/roll. Source materials/GLB bytes remain unchanged."
+}

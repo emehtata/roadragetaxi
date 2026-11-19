@@ -1,0 +1,47 @@
+{
+ "slug": "off-road-4x4",
+ "triangles": 19882,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "off-road-4x4.glb",
+   "bytes": 1235852
+  },
+  "blend": {
+   "name": "off-road-4x4.blend",
+   "bytes": 1108226
+  },
+  "fbx": {
+   "name": "off-road-4x4.fbx",
+   "bytes": 2225436
+  },
+  "obj": {
+   "name": "off-road-4x4-obj.zip",
+   "bytes": 1101365
+  },
+  "usdz": {
+   "name": "off-road-4x4.usdz",
+   "bytes": 1947518
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "2.145 x 4.960 x 2.530",
+  "triangles": 19882,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "three-door off-road 4x4, approx. 4.6 x 2.0 x 2.4 m (L x W x H incl. roof rack and spare wheel), wheel diameter 0.80 m",
+  "notes": "front faces -Y; the rear door 'off-road-4x4_rear_door' carries the spare wheel and is a separate object with its origin on the hinge (right rear edge, rotate around local Z to open); 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, seats, rear bench and steering wheel; no brand, no logo, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

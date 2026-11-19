@@ -1,0 +1,47 @@
+{
+ "slug": "coupe",
+ "triangles": 16856,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "coupe.glb",
+   "bytes": 1118588
+  },
+  "blend": {
+   "name": "coupe.blend",
+   "bytes": 1009506
+  },
+  "fbx": {
+   "name": "coupe.fbx",
+   "bytes": 2094876
+  },
+  "obj": {
+   "name": "coupe-obj.zip",
+   "bytes": 1106779
+  },
+  "usdz": {
+   "name": "coupe.usdz",
+   "bytes": 1737783
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.815 x 4.697 x 1.370",
+  "triangles": 16856,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "retro two-door coupe, approx. 4.5 x 1.75 x 1.35 m (L x W x H), wheel diameter 0.62 m",
+  "notes": "front faces -Y; 4 wheels with whitewall tyres are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, two seats and steering wheel; no brand, no logo, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

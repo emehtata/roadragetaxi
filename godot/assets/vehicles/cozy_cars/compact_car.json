@@ -1,0 +1,281 @@
+{
+  "file": "godot/assets/vehicles/cozy_cars/compact_car.glb",
+  "kind": "city_car",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/compact-car/",
+  "download_url": "https://grab3d.com/dl/compact-car/compact-car.glb",
+  "download_date": "2026-11-19",
+  "sha256": "485a12d20e17cd5688f65b9a6ee6325e2d7089dde79553f65ee473f55a38a79f",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "triangles": 17338,
+  "source_bounds_min_xyz_m": [
+    -0.877725422382355,
+    0.0,
+    -1.86199986934662
+  ],
+  "source_dimensions_xyz_m": [
+    1.755450963974,
+    1.48250007629395,
+    3.72399973869324
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.877725422382355,
+        0.200000002980232,
+        -1.86199986934662
+      ],
+      "name": "compact-car_body",
+      "size": [
+        1.755450963974,
+        1.28250002861023,
+        3.72399973869324
+      ]
+    },
+    {
+      "min": [
+        0.575060307979584,
+        0.0,
+        0.738000094890594
+      ],
+      "name": "compact-car_wheel_fl",
+      "size": [
+        0.209879159927368,
+        0.600000023841858,
+        0.599999964237213
+      ]
+    },
+    {
+      "min": [
+        -0.784939706325531,
+        0.0,
+        0.738000094890594
+      ],
+      "name": "compact-car_wheel_fr",
+      "size": [
+        0.209879159927368,
+        0.600000023841858,
+        0.599999964237213
+      ]
+    },
+    {
+      "min": [
+        0.575060427188873,
+        0.0,
+        -1.44199991226196
+      ],
+      "name": "compact-car_wheel_rl",
+      "size": [
+        0.209879159927368,
+        0.600000023841858,
+        0.599999964237213
+      ]
+    },
+    {
+      "min": [
+        -0.784939587116241,
+        0.0,
+        -1.44199991226196
+      ],
+      "name": "compact-car_wheel_rr",
+      "size": [
+        0.209879159927368,
+        0.600000023841858,
+        0.599999964237213
+      ]
+    },
+    {
+      "min": [
+        -0.726590096950531,
+        0.874758720397949,
+        -1.56925964355469
+      ],
+      "name": "compact-car_windows",
+      "size": [
+        1.45318043231964,
+        0.440145254135132,
+        2.03490447998047
+      ]
+    }
+  ],
+  "source_materials": [
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "compact-car_body_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/compact_car_compact-car_body_basecolor.jpg"
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "compact-car_tire_x",
+      "texture": "res://assets/vehicles/cozy_cars/compact_car_compact-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "compact-car_rim_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "compact-car_hubcap_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "compact-car_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "compact-car_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_cars/compact_car_compact-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "compact-car_rim_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "compact-car_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "compact-car_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "compact-car_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_cars/compact_car_compact-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "compact-car_rim_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "compact-car_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "compact-car_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "compact-car_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_cars/compact_car_compact-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "compact-car_rim_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "compact-car_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "compact-car_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.890196084976196,
+        0.933333396911621
+      ],
+      "name": "compact-car_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "runtime": "Primary city_car body. Source bytes unchanged; bake child transforms; deduplicate equivalent source wheel materials; uniform min(sim_length/source_length,sim_width/source_width), source+Z forward; preserve PBR textures and all source parts. Runtime paint hue mask preserves atlas trim, glass and tire materials. Shader emission selects authored front yellow/rear red lens pixels; source-fit reverse/indicator overlays and taxi sign follow full pitch/roll/elevation. No simulation changes.",
+  "lamp_regions_source_m": {
+    "front_min_z": 1.66,
+    "rear_max_z": -1.74,
+    "front_y_range": [
+      0.58,
+      0.75
+    ],
+    "rear_y_range": [
+      0.52,
+      0.82
+    ]
+  },
+  "lamp_adaptation": "Native colored lens texels are classified in source sRGB within measured spatial regions. Reverse/indicator overlay centres are placed against cached source-triangle intersections at the measured lens heights (at most5cm contact error), then uniformly scaled and transformed with full body pitch/roll. Source materials/GLB bytes remain unchanged."
+}

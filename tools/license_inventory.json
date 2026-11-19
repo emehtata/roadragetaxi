@@ -3,6 +3,22 @@
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
     {
+      "name": "Grab3D Cozy Cars primary fleet (CC0)",
+      "paths": [
+        "godot/assets/vehicles/cozy_cars/**"
+      ],
+      "purpose": "Primary shaded 3D passenger cars, taxi, SUV and pickup; existing props Station Wagon reused for estate",
+      "shipped": true,
+      "origin": "https://grab3d.com/kits/cozy-cars/; exact URLs/hashes in godot/assets/vehicles/cozy_cars/*.json",
+      "copyright": "not named on source pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "Original model manifests/notices and full CC0 text retained in cozy_cars/; source pages state CC0",
+      "obligations": "none (CC0); retain source records and fi/en/de credits under project policy",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
       "name": "Road Rage Trip game code",
       "paths": ["src/theroadragetrip/**/*.py", "godot/**/*.gd", "godot/**/*.tscn", "godot/**/*.tres", "godot/**/*.gdshader", "godot/project.godot", "godot/audio/audio_events.json", "src/theroadragetrip/assets/landmarks.json"],
       "purpose": "the game client and simulation server", "shipped": true,

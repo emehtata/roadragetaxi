@@ -1,0 +1,47 @@
+{
+ "slug": "compact-car",
+ "triangles": 17338,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "compact-car.glb",
+   "bytes": 1156756
+  },
+  "blend": {
+   "name": "compact-car.blend",
+   "bytes": 1041345
+  },
+  "fbx": {
+   "name": "compact-car.fbx",
+   "bytes": 2140844
+  },
+  "obj": {
+   "name": "compact-car-obj.zip",
+   "bytes": 1113367
+  },
+  "usdz": {
+   "name": "compact-car.usdz",
+   "bytes": 1770631
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.755 x 3.724 x 1.483",
+  "triangles": 17338,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "three-door compact car (city car), approx. 3.6 x 1.7 x 1.5 m (L x W x H), wheel diameter 0.60 m",
+  "notes": "front faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); white roof; hollow cabin with transparent windows, two seats, rear bench and steering wheel; no brand, no logo, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

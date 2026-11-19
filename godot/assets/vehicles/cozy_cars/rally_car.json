@@ -1,0 +1,281 @@
+{
+  "file": "godot/assets/vehicles/cozy_cars/rally_car.glb",
+  "kind": "hatchback",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/rally-car/",
+  "download_url": "https://grab3d.com/dl/rally-car/rally-car.glb",
+  "download_date": "2026-11-19",
+  "sha256": "96301ed4a42b05ce21913b91a4180b249275f1c9c8b8f3957916e5d114be78a8",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "triangles": 19726,
+  "source_bounds_min_xyz_m": [
+    -0.94795173406601,
+    0.0,
+    -2.19670009613037
+  ],
+  "source_dimensions_xyz_m": [
+    1.89590358734131,
+    1.69000005722046,
+    4.39340019226074
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.94795173406601,
+        0.0700000077486038,
+        -2.19670009613037
+      ],
+      "name": "rally-car_body",
+      "size": [
+        1.89590358734131,
+        1.62000000476837,
+        4.39340019226074
+      ]
+    },
+    {
+      "min": [
+        0.635071814060211,
+        0.0,
+        0.943299770355225
+      ],
+      "name": "rally-car_wheel_fl",
+      "size": [
+        0.249856114387512,
+        0.680000007152557,
+        0.680000066757202
+      ]
+    },
+    {
+      "min": [
+        -0.884928166866302,
+        0.0,
+        0.943299770355225
+      ],
+      "name": "rally-car_wheel_fr",
+      "size": [
+        0.249856114387512,
+        0.680000007152557,
+        0.680000066757202
+      ]
+    },
+    {
+      "min": [
+        0.635071933269501,
+        0.0,
+        -1.57670021057129
+      ],
+      "name": "rally-car_wheel_rl",
+      "size": [
+        0.249856114387512,
+        0.680000007152557,
+        0.680000066757202
+      ]
+    },
+    {
+      "min": [
+        -0.884928047657013,
+        0.0,
+        -1.57670021057129
+      ],
+      "name": "rally-car_wheel_rr",
+      "size": [
+        0.249856114387512,
+        0.680000007152557,
+        0.680000066757202
+      ]
+    },
+    {
+      "min": [
+        -0.751731872558594,
+        0.986836969852448,
+        -1.83255445957184
+      ],
+      "name": "rally-car_windows",
+      "size": [
+        1.50346374511719,
+        0.380662977695465,
+        2.73759794235229
+      ]
+    }
+  ],
+  "source_materials": [
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "rally-car_body_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/rally_car_rally-car_body_basecolor.jpg"
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "rally-car_tire_x",
+      "texture": "res://assets/vehicles/cozy_cars/rally_car_rally-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "rally-car_rim_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.611764669418335,
+        0.7843137383461,
+        0.933333396911621
+      ],
+      "name": "rally-car_hubcap_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "rally-car_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "rally-car_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_cars/rally_car_rally-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "rally-car_rim_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.611764669418335,
+        0.7843137383461,
+        0.933333396911621
+      ],
+      "name": "rally-car_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "rally-car_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "rally-car_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_cars/rally_car_rally-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "rally-car_rim_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.611764669418335,
+        0.7843137383461,
+        0.933333396911621
+      ],
+      "name": "rally-car_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "rally-car_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "rally-car_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_cars/rally_car_rally-car_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.984313726425171,
+        0.972549021244049,
+        0.952941179275513
+      ],
+      "name": "rally-car_rim_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.611764669418335,
+        0.7843137383461,
+        0.933333396911621
+      ],
+      "name": "rally-car_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "rally-car_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.890196084976196,
+        0.933333396911621
+      ],
+      "name": "rally-car_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "runtime": "Primary hatchback body. Source bytes unchanged; bake child transforms; deduplicate equivalent source wheel materials; uniform min(sim_length/source_length,sim_width/source_width), source+Z forward; preserve PBR textures and all source parts. Runtime paint hue mask preserves atlas trim, glass and tire materials. Shader emission selects authored front yellow/rear red lens pixels; source-fit reverse/indicator overlays and taxi sign follow full pitch/roll/elevation. No simulation changes.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.03,
+    "rear_max_z": -2.05,
+    "front_y_range": [
+      0.58,
+      0.83
+    ],
+    "rear_y_range": [
+      0.73,
+      0.93
+    ]
+  },
+  "lamp_adaptation": "Native colored lens texels are classified in source sRGB within measured spatial regions. Reverse/indicator overlay centres are placed against cached source-triangle intersections at the measured lens heights (at most5cm contact error), then uniformly scaled and transformed with full body pitch/roll. Source materials/GLB bytes remain unchanged."
+}

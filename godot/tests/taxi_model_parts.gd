@@ -37,6 +37,7 @@ func test_no_interior_surface() -> void:
 
 ## The scaled model's paint top (its roof).
 func paint_roof(mesh: ArrayMesh, scale: Vector3) -> float:
+	if B3.COZY_CARS.has("saloon") and mesh==B3.merged_model("saloon"): return B3.COZY_CARS.saloon.height*scale.y
 	var top := -INF
 	for surface in mesh.get_surface_count():
 		if surface_name(mesh, surface).begins_with("paint"):
@@ -72,7 +73,7 @@ func test_taxi_parts_inside_body() -> void:
 func test_roof_sign_on_roof() -> void:
 	var kind := B3.car_model_kind(Entities.CAR_SHAPES[0], TAXI_LENGTH)
 	var roof := paint_roof(B3.merged_model(kind), B3.model_scale(kind, TAXI_LENGTH, TAXI_WIDTH))
-	var details := B3.model_car_details(TAXI_LENGTH, TAXI_WIDTH, 2, 0, 0.5, true, 1.41)
+	var details := B3.cozy_car_details(kind,TAXI_LENGTH,TAXI_WIDTH,2,0)
 	var bottom := INF
 	for v: Vector3 in details["verts"]:
 		if v.y > 1.0:  # the sign, not the lamp lenses

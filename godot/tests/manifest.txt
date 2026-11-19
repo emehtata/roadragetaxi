@@ -42,6 +42,8 @@ res://tests/amusement_rides_glb.gd
 res://tests/outdoor_infrastructure_glb.gd
 res://tests/camping_props_glb.gd
 
+res://tests/cozy_cars.gd
+
 [excluded]
 res://tests/snow_visibility_render.gd  # native GPU rendered regression: needs a display
 res://tests/animal_audio_render.gd  # render tool: waits for a drawn frame, hangs headless

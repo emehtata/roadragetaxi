@@ -68,3 +68,9 @@ This is local processing of the same CC0 source above, with no new data source.
 See [correction evidence](../../../docs/visual-quality-corrections/train-coach-roof-vent/README.md).
 
 Static camping props also reuse `camper_van.glb` (45,436 triangles, nine materials; source X/Y/Z 2.154150 × 2.214401 × 5.042000 m). Its complete mesh is ground-centred, turned +90° about Y to local +X, and uniformly fit to the positive streamed length, 2.5 m width and 2.9 m height. Driven vehicle resources/transforms remain unchanged. Finnish, English and German credits identify the original 3DAssets.dev CC0 source.
+
+## Cozy Cars primary fleet
+
+The shaded passenger-car body styles now select Grab3D [Cozy Cars](https://grab3d.com/kits/cozy-cars/) GLBs: saloon → Electric Car, city car → Compact Car, hatchback → Rally Car, estate → the already shipped `../props/station_wagon.glb`, sports → Coupe, SUV → Off-Road 4x4, pickup → Vintage Truck. `cozy_cars/*.json` records exact source/download URLs, unchanged hashes, measured bounds/parts/materials and transforms; original notices/manifests and full CC0 1.0 text accompany them. Attribution is displayed in Finnish, English and German.
+
+Runtime keeps every authored source triangle and child transform. Equivalent wheel materials share cached batches. A single uniform scale fits the simulated length/width without oval wheels; height follows that factor. Body atlas hue tint retains trim/upholstery/lamp detail; source glass and tires remain separate. Head/tail/brake emission classifies authored yellow/red lens texels in source sRGB inside measured source height/depth bands. Small reverse/indicator overlays use cached source-triangle contact rays; the taxi roof sign is source-fitted and inherit road pitch/roll/elevation. Door/wheel animation is not added. The kit Minivan is rejected for the cargo-van role (passenger windows/seats and sliding door); the existing panel-van GLB remains. Static camping sources are unchanged.

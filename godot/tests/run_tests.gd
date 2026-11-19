@@ -5323,7 +5323,7 @@ func test_pooled_models_merge_by_material() -> void:
 			for i in mi.mesh.get_surface_count():
 				if kind in B3.CAR_MODEL_KINDS and mi.mesh.surface_get_material(i).resource_name == "interior":
 					continue  # dropped from merged cars (docs/specs/taxi-model-seats.md)
-				materials[mi.mesh.surface_get_material(i)] = true
+				materials[mi.mesh.surface_get_material(i).resource_name.get_slice(".",0) if B3.COZY_CARS.has(kind) else mi.mesh.surface_get_material(i)] = true
 				for v: Vector3 in mi.mesh.surface_get_arrays(i)[Mesh.ARRAY_VERTEX]:  # vertex bounds: some imported AABBs are loose
 					box = AABB(xform * v, Vector3.ZERO) if first else box.expand(xform * v)
 					first = false

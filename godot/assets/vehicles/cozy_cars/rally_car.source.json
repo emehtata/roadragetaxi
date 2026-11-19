@@ -1,0 +1,47 @@
+{
+ "slug": "rally-car",
+ "triangles": 19726,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "rally-car.glb",
+   "bytes": 1286748
+  },
+  "blend": {
+   "name": "rally-car.blend",
+   "bytes": 1156656
+  },
+  "fbx": {
+   "name": "rally-car.fbx",
+   "bytes": 2331052
+  },
+  "obj": {
+   "name": "rally-car-obj.zip",
+   "bytes": 1208994
+  },
+  "usdz": {
+   "name": "rally-car.usdz",
+   "bytes": 1930573
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.896 x 4.393 x 1.690",
+  "triangles": 19726,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "rally car (compact hatchback), approx. 4.2 x 1.9 x 1.7 m (L x W x H incl. rear wing), wheel diameter 0.68 m",
+  "notes": "front faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); blank white start number panels without digits, light bar with four auxiliary lamps, roll cage and bucket seats inside; no brand, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

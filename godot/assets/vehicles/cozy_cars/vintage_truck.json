@@ -1,0 +1,303 @@
+{
+  "file": "godot/assets/vehicles/cozy_cars/vintage_truck.glb",
+  "kind": "pickup",
+  "source": "Grab3D",
+  "kit": "Cozy Cars",
+  "page_url": "https://grab3d.com/models/vehicles/vintage-truck/",
+  "download_url": "https://grab3d.com/dl/vintage-truck/vintage-truck.glb",
+  "download_date": "2026-11-19",
+  "sha256": "091e548927630616b367b765eb8a808c834cf2d606725e4b96b0f268bf1ac5db",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "triangles": 19709,
+  "source_bounds_min_xyz_m": [
+    -0.990000188350677,
+    0.0,
+    -2.72200012207031
+  ],
+  "source_dimensions_xyz_m": [
+    1.98000013828278,
+    2.01999998092651,
+    5.44400024414062
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.990000188350677,
+        0.354999989271164,
+        -2.72200012207031
+      ],
+      "name": "vintage-truck_body",
+      "size": [
+        1.98000013828278,
+        1.66499996185303,
+        5.44400024414062
+      ]
+    },
+    {
+      "min": [
+        -0.606000006198883,
+        0.837000012397766,
+        -2.5939998626709
+      ],
+      "name": "vintage-truck_tailgate",
+      "size": [
+        1.21200001239777,
+        0.462999939918518,
+        0.0839998722076416
+      ]
+    },
+    {
+      "min": [
+        0.660069108009338,
+        0.0,
+        1.27199995517731
+      ],
+      "name": "vintage-truck_wheel_fl",
+      "size": [
+        0.239861845970154,
+        0.800000011920929,
+        0.800000071525574
+      ]
+    },
+    {
+      "min": [
+        -0.899930834770203,
+        0.0,
+        1.27199995517731
+      ],
+      "name": "vintage-truck_wheel_fr",
+      "size": [
+        0.239861845970154,
+        0.800000011920929,
+        0.800000071525574
+      ]
+    },
+    {
+      "min": [
+        0.680069267749786,
+        0.0,
+        -1.82800006866455
+      ],
+      "name": "vintage-truck_wheel_rl",
+      "size": [
+        0.239861845970154,
+        0.800000011920929,
+        0.799999952316284
+      ]
+    },
+    {
+      "min": [
+        -0.919930756092072,
+        0.0,
+        -1.82800006866455
+      ],
+      "name": "vintage-truck_wheel_rr",
+      "size": [
+        0.239861845970154,
+        0.800000011920929,
+        0.799999952316284
+      ]
+    },
+    {
+      "min": [
+        -0.730621993541718,
+        1.41475224494934,
+        -0.385184586048126
+      ],
+      "name": "vintage-truck_windows",
+      "size": [
+        1.46124398708344,
+        0.39597487449646,
+        0.978603601455688
+      ]
+    }
+  ],
+  "source_materials": [
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "vintage-truck_body_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/vintage_truck_vintage-truck_body_basecolor.jpg"
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "vintage-truck_tailgate_pbr",
+      "texture": "res://assets/vehicles/cozy_cars/vintage_truck_vintage-truck_tailgate_basecolor.jpg"
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "vintage-truck_tire_x",
+      "texture": "res://assets/vehicles/cozy_cars/vintage_truck_vintage-truck_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.964705884456635,
+        0.929411768913269,
+        0.874509811401367
+      ],
+      "name": "vintage-truck_rim_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "vintage-truck_hubcap_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "vintage-truck_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "vintage-truck_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_cars/vintage_truck_vintage-truck_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.964705884456635,
+        0.929411768913269,
+        0.874509811401367
+      ],
+      "name": "vintage-truck_rim_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "vintage-truck_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "vintage-truck_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "vintage-truck_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_cars/vintage_truck_vintage-truck_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.964705884456635,
+        0.929411768913269,
+        0.874509811401367
+      ],
+      "name": "vintage-truck_rim_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "vintage-truck_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "vintage-truck_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "color": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "name": "vintage-truck_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_cars/vintage_truck_vintage-truck_tire_color.jpg"
+    },
+    {
+      "color": [
+        0.964705884456635,
+        0.929411768913269,
+        0.874509811401367
+      ],
+      "name": "vintage-truck_rim_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.850980341434479,
+        0.87058824300766,
+        0.894117653369904
+      ],
+      "name": "vintage-truck_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.235294133424759,
+        0.24705882370472,
+        0.290196090936661
+      ],
+      "name": "vintage-truck_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "color": [
+        0.749019622802734,
+        0.890196084976196,
+        0.933333396911621
+      ],
+      "name": "vintage-truck_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "runtime": "Primary pickup body. Source bytes unchanged; bake child transforms; deduplicate equivalent source wheel materials; uniform min(sim_length/source_length,sim_width/source_width), source+Z forward; preserve PBR textures and all source parts. Runtime paint hue mask preserves atlas trim, glass and tire materials. Shader emission selects authored front yellow/rear red lens pixels; source-fit reverse/indicator overlays and taxi sign follow full pitch/roll/elevation. No simulation changes.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.19,
+    "rear_max_z": -1.93,
+    "front_y_range": [
+      0.98,
+      1.22
+    ],
+    "rear_y_range": [
+      0.76,
+      0.85
+    ]
+  },
+  "lamp_adaptation": "Native colored lens texels are classified in source sRGB within measured spatial regions. Reverse/indicator overlay centres are placed against cached source-triangle intersections at the measured lens heights (at most5cm contact error), then uniformly scaled and transformed with full body pitch/roll. Source materials/GLB bytes remain unchanged."
+}

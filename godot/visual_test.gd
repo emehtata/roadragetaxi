@@ -227,6 +227,17 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.get("cozy_fleet",false):
+		main.entities.extra_npcs=[]
+		var kinds:=["saloon","city_car","hatchback","estate","suv","pickup","sports"]
+		var lengths:=[4.6,3.8,4.5,4.8,4.8,5.0,4.7]
+		for i in kinds.size():
+			var id:=0
+			for candidate in 200:
+				id=1000000+i*1000+candidate
+				if Buildings3D.car_model_kind(main.entities.CAR_SHAPES[absi(hash(id))%main.entities.CAR_SHAPES.size()],lengths[i])==kinds[i]:break
+			var at:=_on_road(-15.0+i*5.5,3.5)
+			main.entities.extra_npcs.append({"id":id,"x":at.x,"y":at.y,"heading":scenario.pose[2],"length_m":lengths[i],"width_m":1.7 if i==1 else 1.9 if i in [4,5] else 1.8,"color":[75+i*20,125,185-i*13],"vehicle_type":"car","state":"DRIVING" if scenario.get("cozy_lamps",false) else "PARKED","speed":0.0,"is_taxi":false,"braking":scenario.get("cozy_lamps",false),"turn_signal":"hazard" if scenario.get("cozy_lamps",false) else "","turn_signal_elapsed":0.0})
 	if scenario.get("fox_orientation", false):
 		var at := _on_road(9.0, 0.9)
 		scenario["animals"] = [["fox", at.x, at.y, float(scenario["pose"][2]) + PI - 0.3]]
@@ -1377,6 +1388,36 @@ func _check_map(centre: Vector2) -> Array:
 				windscreen["active_3d"] = layer_3d_view()._view.get_camera_3d() == camera_3d
 		if not found: missing.append("expected windscreen model %s not placed at target" % kind)
 
+	var cozy_fleet_result:={}
+	if scenario.get("cozy_fleet",false):
+		var fleet:={};var layer=layer_3d_view()
+		for target:Dictionary in main.entities.extra_npcs:
+			var shape:Array=main.entities.CAR_SHAPES[absi(hash(target.id))%main.entities.CAR_SHAPES.size()]
+			var kind:=Buildings3D.car_model_kind(shape,float(target.length_m))
+			var local:=MapMath.point(main.entities.origin,float(target.x),float(target.y));var found:=false
+			for node:Node3D in ([] if layer==null else layer._model_nodes.get(kind,[])):
+				if not node.visible or Vector2(node.position.x,node.position.z).distance_to(local)>0.1:continue
+				found=true;var mesh:MeshInstance3D=node.get_child(0);var rect:=Rect2()
+				if mesh.mesh!=Buildings3D.merged_model(kind) or not mesh.is_visible_in_tree() or mesh.layers & camera_3d.cull_mask==0:missing.append("Cozy fleet selected source absent/hidden "+kind)
+				for corner in 8:
+					var point:Vector3=mesh.global_transform*mesh.get_aabb().get_endpoint(corner)
+					if not camera_3d.is_position_in_frustum(point):missing.append("Cozy fleet outside frustum "+kind)
+					var pixel:=camera_3d.unproject_position(point);rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+				if minf(rect.size.x,rect.size.y)<25 or maxf(rect.size.x,rect.size.y)<65:missing.append("Cozy fleet too small "+kind+" "+str(rect))
+				for panel:Rect2 in hud:
+					if panel.intersects(rect):missing.append("Cozy fleet under HUD "+kind)
+				var ground_error:=absf(node.position.y-main.map_layer.deck_height(local,0)-Buildings3D.ROAD_M-0.016)
+				if ground_error>0.03:missing.append("Cozy fleet wheels not on road "+kind)
+				var fleet_lamps:int=Buildings3D.LAMPS_ON|Buildings3D.LAMPS_BRAKE|Buildings3D.LAMPS_LEFT|Buildings3D.LAMPS_RIGHT if scenario.get("cozy_lamps",false) else 0
+				if mesh.get_instance_shader_parameter("lamp_bits")!=fleet_lamps:missing.append("Cozy fleet incorrect lamp state "+kind)
+				if node.basis.z.normalized().dot(Vector3(cos(float(target.heading)),0,-sin(float(target.heading))))<0.99:missing.append("Cozy fleet heading differs "+kind)
+				var triangles:=0
+				for surface in mesh.mesh.get_surface_count():triangles+=mesh.mesh.get_surface_array_index_len(surface)/3
+				if triangles!={"saloon":17770,"city_car":17338,"hatchback":19726,"estate":19308,"suv":19882,"pickup":19709,"sports":16856}[kind]:missing.append("Cozy fleet source triangles missing "+kind)
+				fleet[kind]={"triangles":triangles,"materials":mesh.mesh.get_surface_count(),"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"source":Buildings3D.MODEL_SCENES[kind].resource_path,"ground_error_m":ground_error,"lamp_bits":fleet_lamps}
+			if not found:missing.append("Cozy fleet production model absent "+kind)
+		if fleet.size()!=7:missing.append("Cozy fleet needs all seven mapped source models")
+		cozy_fleet_result=fleet
 	var needs: Dictionary = scenario.get("requires", {})
 	if lamps < int(needs.get("lamps_in_view", 0)):
 		missing.append("%d street lamps in view, the scenario needs %d" % [lamps, needs["lamps_in_view"]])
@@ -1466,6 +1507,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not camping_glb.is_empty(): _counts["camping_glb"] = camping_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
+	if not cozy_fleet_result.is_empty(): _counts["cozy_cars_fleet"]=cozy_fleet_result
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

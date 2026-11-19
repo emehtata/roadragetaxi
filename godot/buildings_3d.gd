@@ -523,13 +523,13 @@ const LAMPS_REVERSE := 4
 const LAMPS_LEFT := 8  # an indicator, blinking on now
 const LAMPS_RIGHT := 16
 const MODEL_SCENES := {
-	"saloon": preload("res://assets/vehicles/saloon.glb"),
-	"hatchback": preload("res://assets/vehicles/hatchback.glb"),
-	"estate": preload("res://assets/vehicles/estate.glb"),
-	"suv": preload("res://assets/vehicles/suv.glb"),
-	"pickup": preload("res://assets/vehicles/pickup.glb"),
-	"sports": preload("res://assets/vehicles/sports.glb"),
-	"city_car": preload("res://assets/vehicles/city_car.glb"),
+	"saloon": preload("res://assets/vehicles/cozy_cars/electric_car.glb"),
+	"hatchback": preload("res://assets/vehicles/cozy_cars/rally_car.glb"),
+	"estate": preload("res://assets/props/station_wagon.glb"),
+	"suv": preload("res://assets/vehicles/cozy_cars/off_road_4x4.glb"),
+	"pickup": preload("res://assets/vehicles/cozy_cars/vintage_truck.glb"),
+	"sports": preload("res://assets/vehicles/cozy_cars/coupe.glb"),
+	"city_car": preload("res://assets/vehicles/cozy_cars/compact_car.glb"),
 	"panel_van": preload("res://assets/vehicles/panel_van.glb"),
 	"box_truck": preload("res://assets/vehicles/box_truck.glb"),
 	"motorcycle": preload("res://assets/vehicles/motorcycle.glb"),
@@ -545,10 +545,10 @@ const MODEL_SCENES := {
 	"train_coach": preload("res://assets/vehicles/train_coach.glb"),
 }
 const MODEL_SIZE := {  # [width, length] in the source scenes, metres
-	"saloon": Vector2(2.0, 4.822), "hatchback": Vector2(1.952, 4.342),
-	"estate": Vector2(2.01, 5.041), "suv": Vector2(2.077, 4.782),
-	"pickup": Vector2(2.077, 5.392), "sports": Vector2(2.058, 4.882),
-	"city_car": Vector2(1.828, 3.592), "panel_van": Vector2(2.154, 5.392),
+	"saloon": Vector2(1.915451, 4.532474), "hatchback": Vector2(1.895904, 4.393400),
+	"estate": Vector2(1.895904, 4.663695), "suv": Vector2(2.145266, 4.959919),
+	"pickup": Vector2(1.980000, 5.444000), "sports": Vector2(1.814998, 4.697256),
+	"city_car": Vector2(1.755451, 3.724000), "panel_van": Vector2(2.154, 5.392),
 	"box_truck": Vector2(2.652, 7.542), "motorcycle": Vector2(0.58, 2.106),
 	"city_bus": Vector2(3.084, 12.198),
 	"camper_van": Vector2(2.154, 5.042),
@@ -863,8 +863,10 @@ func car(at: Vector2, heading: float, length: float, width: float, color: Color,
 		var kind := car_model_kind(shape, length)
 		place_model_car(kind, at, heading, length, width, color, elevation, lamps, tilt)
 		var detail_key := "d|%s|%.2f|%.2f|%d|%d" % [kind, length, width, sign, lamps]
-		place_body(detail_key, func() -> Dictionary: return model_car_details(length, width, sign, lamps, 0.5, true,
+		place_body(detail_key, func() -> Dictionary: return cozy_car_details(kind,length,width,sign,lamps) if COZY_CARS.has(kind) else model_car_details(length, width, sign, lamps, 0.5, true,
 			2.26 if kind == "panel_van" else 1.41), at, heading, elevation)
+		for node:MeshInstance3D in _car_nodes[_cars_used-1]:
+			node.basis = Basis(Vector3.UP,heading) * Basis(Vector3.BACK,tilt.x) * Basis(Vector3.RIGHT,tilt.y)
 		return
 	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 35.0 else 1
 	var key := "%s|%s|%.2f|%.2f|%d|%d|%d" % [color.to_html(false), shape, length, width, sign, lamps, detail]
@@ -914,7 +916,9 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 				var original: Material = mesh.mesh.surface_get_material(surface)
 				if original == null:
 					continue
-				if original.resource_name.begins_with("paint") or (kind == "tractor" and original.resource_name == "orange") or \
+				if COZY_CARS.has(kind) and original.resource_name.ends_with("_pbr"):
+					mesh.set_surface_override_material(surface, cozy_car_material(original,kind))
+				elif original.resource_name.begins_with("paint") or (COZY_CARS.has(kind) and original.resource_name.ends_with("_paint_x")) or (kind == "tractor" and original.resource_name == "orange") or \
 					(kind == "caravan" and original.resource_name == "shell") or (kind == "e_scooter" and original.resource_name == "teal") or \
 					(kind == "train_locomotive" and original.resource_name == "Original teal enamel paint") or \
 					(kind == "train_coach" and original.resource_name == "Original warm white outdoor paint"):
@@ -923,7 +927,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 					paint.albedo_texture = null
 					mesh.set_surface_override_material(surface, paint)
 					paint_materials.append(paint)
-				elif original.resource_name == "glass":
+				elif original.resource_name == "glass" or (COZY_CARS.has(kind) and "window_glass" in original.resource_name):
 					mesh.set_surface_override_material(surface, car_glazing(original))
 				elif original.resource_name.begins_with("light"):
 					var lens: StandardMaterial3D = original.duplicate()
@@ -939,6 +943,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 		for material: StandardMaterial3D in car_node.get_meta("paint_materials"):
 			material.albedo_color = color
 		car_node.set_meta("paint", color)
+		if COZY_CARS.has(kind): (car_node.get_child(0) as MeshInstance3D).set_instance_shader_parameter("body_paint",color)
 	if car_node.get_meta("lamps", -1) != lamps:
 		for pair: Array in car_node.get_meta("light_materials"):
 			var material: StandardMaterial3D = pair[0]
@@ -949,6 +954,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 				material.emission_enabled = lamps & (LAMPS_ON | LAMPS_BRAKE) != 0
 				material.emission_energy_multiplier = 3.0 if lamps & LAMPS_BRAKE else 1.0
 		car_node.set_meta("lamps", lamps)
+		if COZY_CARS.has(kind): (car_node.get_child(0) as MeshInstance3D).set_instance_shader_parameter("lamp_bits",lamps)
 	var along_x := kind in ["city_bus", "train_locomotive", "train_coach"]
 	var turn := heading if along_x else heading + PI / 2.0
 	if kind == "city_bus": turn += PI  # its destination display and windshield face source -X
@@ -958,6 +964,16 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 	car_node.visible = true
 	_model_used[kind] = used + 1
 
+
+const COZY_CARS := {
+	"saloon": {"size":Vector2(1.915451,4.532474),"height":1.450000,"paint":Color8(153,196,230),"front":Vector2(0.60,0.77),"lamp_z":Vector2(2.1,-2.18),"rear":Vector2(0.77,0.90)},
+	"city_car": {"size":Vector2(1.755451,3.724000),"height":1.482500,"paint":Color8(162,211,196),"front":Vector2(0.58,0.75),"lamp_z":Vector2(1.66,-1.74),"rear":Vector2(0.52,0.82)},
+	"hatchback": {"size":Vector2(1.895904,4.393400),"height":1.690000,"paint":Color8(153,196,230),"front":Vector2(0.58,0.83),"lamp_z":Vector2(2.03,-2.05),"rear":Vector2(0.73,0.93)},
+	"estate": {"size":Vector2(1.895904,4.663695),"height":1.647000,"paint":Color8(162,211,196),"front":Vector2(0.47,0.72),"lamp_z":Vector2(2.18,-2.26),"rear":Vector2(0.52,0.90)},
+	"sports": {"size":Vector2(1.814998,4.697256),"height":1.370000,"paint":Color8(183,161,218),"front":Vector2(0.42,0.64),"lamp_z":Vector2(2.19,-2.14),"rear":Vector2(0.50,0.66)},
+	"suv": {"size":Vector2(2.145266,4.959919),"height":2.530000,"paint":Color8(170,194,150),"front":Vector2(0.78,1.12),"lamp_z":Vector2(2.14,-2.01),"rear":Vector2(0.70,1.02)},
+	"pickup": {"size":Vector2(1.980000,5.444000),"height":2.020000,"paint":Color8(231,160,141),"front":Vector2(0.98,1.22),"lamp_z":Vector2(2.19,-1.93),"rear":Vector2(0.76,0.85)},
+}
 
 const CAR_MODEL_KINDS := ["saloon", "city_car", "hatchback", "estate", "suv", "sports", "pickup", "panel_van"]  # car_model_kind()
 
@@ -971,6 +987,7 @@ static func merged_model(kind: String, scene: PackedScene = null) -> ArrayMesh:
 		return _merged_models[kind]
 	var source: Node3D = (scene if scene != null else MODEL_SCENES[kind]).instantiate()
 	var tools := {}  # Material -> SurfaceTool, in first-seen order
+	var equivalent := {}
 	for mi: MeshInstance3D in source.find_children("*", "MeshInstance3D", true, false):
 		var xform := Transform3D()
 		var node: Node = mi
@@ -979,6 +996,10 @@ static func merged_model(kind: String, scene: PackedScene = null) -> ArrayMesh:
 			node = node.get_parent()
 		for surface in mi.mesh.get_surface_count():
 			var material: Material = mi.mesh.surface_get_material(surface)
+			if COZY_CARS.has(kind) and material != null:
+				var key := material.resource_name.get_slice(".",0)
+				if equivalent.has(key): material = equivalent[key]
+				else: equivalent[key] = material
 			if kind in CAR_MODEL_KINDS and material != null and material.resource_name == "interior":
 				continue  # seats show as grey blocks through the roof glass (docs/specs/taxi-model-seats.md)
 			if not tools.has(material):
@@ -998,6 +1019,9 @@ static func merged_model(kind: String, scene: PackedScene = null) -> ArrayMesh:
 ## A model's scale to the sim's length x width; UNIFORM_SCALE_MODELS take their height from the length
 ## factor (round wheels), the rest keep the source height.
 static func model_scale(kind: String, length: float, width: float) -> Vector3:
+	if COZY_CARS.has(kind):
+		var size:Vector2 = COZY_CARS[kind].size
+		return Vector3.ONE * minf(length / size.y, width / size.x)
 	var source: Vector2 = MODEL_SIZE[kind]
 	var up := length / source.y if kind in UNIFORM_SCALE_MODELS else 1.0
 	if kind in MODEL_HEIGHT:
@@ -1018,6 +1042,48 @@ static func car_glazing(original: Material) -> StandardMaterial3D:
 	glazing.metallic_specular = 0.6
 	glazing.roughness = 0.05
 	return glazing
+
+
+static var _cozy_materials := {}
+static var _cozy_contact_meshes := {}
+
+static func cozy_car_material(original:StandardMaterial3D, kind:String)->ShaderMaterial:
+	if _cozy_materials.has(original): return _cozy_materials[original]
+	var material := ShaderMaterial.new()
+	material.shader = preload("res://cozy_car.gdshader")
+	material.set_shader_parameter("base_color",original.albedo_texture)
+	material.set_shader_parameter("metallic_roughness",original.metallic_texture)
+	material.set_shader_parameter("normal_texture",original.normal_texture)
+	material.set_shader_parameter("source_paint",COZY_CARS[kind].paint)
+	material.set_shader_parameter("lamp_z",COZY_CARS[kind].lamp_z)
+	material.set_shader_parameter("front_lamp_height",COZY_CARS[kind].front)
+	material.set_shader_parameter("rear_lamp_height",COZY_CARS[kind].rear)
+	_cozy_materials[original]=material
+	return material
+
+
+static func cozy_car_details(kind:String,length:float,width:float,sign:int,lamps:int)->Dictionary:
+	var spec:Dictionary=COZY_CARS[kind]
+	var source:Vector2=spec.size
+	var scale:=model_scale(kind,length,width).x
+	var out:=model_car_details(source.y,source.x,sign,lamps,0.5,true,spec.height)
+	if not _cozy_contact_meshes.has(kind): _cozy_contact_meshes[kind]=merged_model(kind).generate_triangle_mesh()
+	# Put each live overlay against the authored body surface, rather than guessing its bumper depth.
+	for first in range(0,out.verts.size(),36):
+		var centre:=Vector3.ZERO
+		for i in range(first,first+36):centre+=out.verts[i]/36.0
+		if centre.y>=1.0:continue
+		var shifted:=centre
+		shifted.y+=(spec.front.x if centre.x>0 else spec.rear.x)-0.5
+		if absf(centre.z)<source.x*0.25:shifted.z=signf(centre.z)*source.x*0.34
+		var ray_from:=Vector3(-shifted.z,shifted.y,signf(centre.x)*(source.y*0.5+0.5))
+		var ray_to:=Vector3(ray_from.x,ray_from.y,0)
+		var hit:Dictionary=_cozy_contact_meshes[kind].intersect_segment(ray_from,ray_to)
+		if not hit.is_empty():shifted.x=hit.position.z+signf(centre.x)*0.012
+		for i in range(first,first+36):out.verts[i]+=shifted-centre
+	for i in out.verts.size():out.verts[i]*=scale
+	for i in out.shadow.size():out.shadow[i]*=scale
+	return out
 
 
 static func model_car_details(length: float, width: float, sign: int, lamps: int, lamp_height := 0.5, native_lights := false,

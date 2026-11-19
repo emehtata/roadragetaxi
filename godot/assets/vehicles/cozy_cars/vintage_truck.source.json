@@ -1,0 +1,47 @@
+{
+ "slug": "vintage-truck",
+ "triangles": 19709,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "vintage-truck.glb",
+   "bytes": 1644524
+  },
+  "blend": {
+   "name": "vintage-truck.blend",
+   "bytes": 1340894
+  },
+  "fbx": {
+   "name": "vintage-truck.fbx",
+   "bytes": 2931628
+  },
+  "obj": {
+   "name": "vintage-truck-obj.zip",
+   "bytes": 1517545
+  },
+  "usdz": {
+   "name": "vintage-truck.usdz",
+   "bytes": 2637044
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.980 x 5.444 x 2.020",
+  "triangles": 19709,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "vintage pickup truck (1940s style), approx. 5.4 x 2.0 x 2.0 m (L x W x H), wheel diameter 0.80 m",
+  "notes": "front faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); tailgate (vintage-truck_tailgate) has its origin on the bottom hinge, rotate around local X to open; hollow cab with split windshield, bench seat and steering wheel; separate rounded fenders, running boards, wooden bed floor; no brand, no text",
+  "set": "Cozy Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}
