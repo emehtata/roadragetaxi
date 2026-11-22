@@ -52,11 +52,11 @@ var _indoor_hint: CanvasLayer
 var _indoor_draws := 0
 var _snow_snapshots := []
 var _indoor_snapshot := {}
+var _coaster_mesh_vertices := {}  # audit-only actual mapped path matching
+var _camp_pair_mesh_vertices := {}  # audit-only actual mapped camping combination match
 var _crossbuck_mesh_vertices := {}  # audit-only matching of the mapped crossing mesh
 var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
 var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
-var _coaster_mesh_vertices := {}  # audit-only actual mapped path matching
-var _camp_pair_mesh_vertices := {}  # audit-only actual mapped camping combination match
 
 
 ## A "walk" scenario (fps-3d-view phase 1): out of the parked taxi, first
@@ -1003,7 +1003,7 @@ func _check_map(centre: Vector2) -> Array:
 								if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
 								var inverse := solid.global_transform.affine_inverse()
 								if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*point).is_empty(): missing.append(("carousel " if carousel else "coaster ")+"seam behind drawn building")
-					if not Rect2(Vector2.ZERO,screen_size).encloses(rect) or rect.size.x<12 or rect.size.y<4: missing.append(("carousel " if carousel else "coaster ")+"seam too small or offscreen")
+					if not Rect2(Vector2.ZERO,screen_size).encloses(rect) or rect.size.x<12 or rect.size.y<4: missing.append(("carousel " if carousel else "coaster ")+"seam too small or offscreen: %s" % rect)
 					for panel: Rect2 in hud:
 						if panel.intersects(rect): missing.append(("carousel " if carousel else "coaster ")+"seam under HUD")
 					var seam_centre: Vector3 = (seam[0]+seam[1])*0.5
