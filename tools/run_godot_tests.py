@@ -43,6 +43,17 @@ def main(argv=None):
     # No display for the children: a script or its subprocess can never open a
     # window, capture or warp the user's cursor, even without --headless.
     env = {k: v for k, v in os.environ.items() if k not in ("DISPLAY", "WAYLAND_DISPLAY")}
+    # Fail fast: a parse error anywhere under main.gd (it preloads visual_test.gd) would
+    # otherwise show up as a hang in every script that loads it, one timeout each.
+    try:
+        code = subprocess.run([args.godot, "--headless", "--path", str(ROOT / "godot"), "--check-only", "--script", "res://main.gd"],
+                              timeout=args.timeout, env=env).returncode
+    except subprocess.TimeoutExpired:
+        code = f"timeout {args.timeout:g} s"
+    if code:
+        print(f"FAIL ({code}): res://main.gd failed to load or parse (see the errors above); "
+              "if there are none, the project import may be missing: run godot --headless --path godot --import first", flush=True)
+        return 1
     results = []
     for script in included:
         print(f"=== {script}", flush=True)
