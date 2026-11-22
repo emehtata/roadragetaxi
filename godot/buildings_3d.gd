@@ -1197,7 +1197,7 @@ func place_body(key: String, build: Callable, at: Vector2, heading: float, eleva
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
 		if i == 0:
-			node.material_override = _shared.get("organic", _shared["car"]) if organic else _shared.get("car", _shared["material"])
+			node.material_override = _shared.get("organic" if organic else "car", _shared.get("car", _shared["material"]))
 		node.transform = place
 		node.visible = i == 0 or not opaque
 	_cars_used += 1
