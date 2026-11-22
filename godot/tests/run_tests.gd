@@ -389,7 +389,6 @@ func test_reflective_strip_geometry_preserved() -> void:
 	renderer.free()
 
 
-
 func test_person_comic_head_ratio() -> void:  # criterion 1: old head (ears) half-width 0.1306 m
 	var half: float = _person_skin("standing", func(p): return p.y > 1.3).map(func(p): return absf(p.z)).max()
 	check(half >= 0.1306 * 1.6 and half <= 0.1306 * 1.8, "a comic head is 1.6-1.8x the old one (%.3f m)" % half)
@@ -639,6 +638,7 @@ func _process(_delta: float) -> bool:  # first frame: the tree is live, so nodes
 	test_model_variant_stable_and_covering()
 	test_cloud_coverage_mapping()
 	test_sky_material_takes_cloud_cover()
+	test_sky_bodies_uniforms()
 	test_precipitation_3d()
 	test_car_model_has_no_range_limit()
 	test_bus_model_radius_matches_car()
@@ -760,7 +760,6 @@ func test_minimap_is_exported() -> void:
 	check(FileAccess.get_file_as_string("res://finland_minimap.svg.import").contains('importer="keep"'),
 		"the Finland minimap SVG is exported as a file (Keep File import)")
 
-	test_sky_bodies_uniforms()
 
 ## Licensing: the attributions players must be able to find (LICENSE_AUDIT.md).
 func test_credits() -> void:
@@ -4729,7 +4728,6 @@ func test_power_tower_geometry_preserved() -> void:
 
 
 
-
 func test_fields_frozen() -> void:
 	var map := MapLayer.new()
 	root.add_child(map)
@@ -5403,13 +5401,6 @@ func test_sky_material_takes_cloud_cover() -> void:
 	r.free()
 
 
-## docs/specs/precipitation-falling.md: the standalone script's tests, counted here too.
-func test_precipitation_3d() -> void:
-	var tests: Object = preload("res://tests/precipitation_3d.gd").new()
-	tests.host = root
-	tests.run()
-	check(tests.failures == 0, "precipitation_3d: %d failures (see FAIL lines above)" % tests.failures)
-	tests.free()
 ## docs/specs/sun-moon-in-sky.md: the sun and moon discs' uniforms follow the server's alt/az.
 func test_sky_bodies_uniforms() -> void:
 	var old_opaque: bool = B3.opaque
@@ -5427,3 +5418,10 @@ func test_sky_bodies_uniforms() -> void:
 	r.free()
 
 
+## docs/specs/precipitation-falling.md: the standalone script's tests, counted here too.
+func test_precipitation_3d() -> void:
+	var tests: Object = preload("res://tests/precipitation_3d.gd").new()
+	tests.host = root
+	tests.run()
+	check(tests.failures == 0, "precipitation_3d: %d failures (see FAIL lines above)" % tests.failures)
+	tests.free()
