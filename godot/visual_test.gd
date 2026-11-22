@@ -211,8 +211,16 @@ func _lineup_train(name: String, look: String, lengths: Array, width: float, y: 
 	return {"id": "lineup_" + name, "name": name, "width_m": width, "state": "STOPPED", "speed": 0.0, "line": "", "cars": cars}
 
 
+func _nature_profile_state(message: Dictionary) -> void:
+	# A render-only benchmark: variable traffic must not change the compared actor population.
+	var state: Dictionary = message.get("state", {})
+	for collection: String in ["npcs", "pedestrians", "trains", "protests", "brawls"]:
+		state[collection] = []
+
+
 func _ready() -> void:
-	if scenario.has("indoor_hint") or scenario.get("snow_visibility", false):
+	if scenario.get("nature_profile",false): main.sim.state_received.connect(_nature_profile_state)
+	if scenario.has("indoor_hint") or scenario.get("snow_visibility", false) or scenario.get("nature_profile",false):
 		main.get_window().mode = Window.MODE_WINDOWED
 		main.get_window().size = Vector2i(scenario["resolution"][0], scenario["resolution"][1])
 	# The driving camera: "camera" (or the last of "switch"); without either the map view as before (3 for "windshield").
@@ -292,6 +300,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if scenario.get("nature_profile",false): main.wildlife.animals.clear()
 	_elapsed += delta
 	if scenario.has("bench_sitter") and not main.entities.extra_pedestrians.any(func(p): return p["id"] == "bench_sitter"):
 		_seat_bench_sitter()
@@ -575,12 +584,77 @@ func _seat_bench_sitter() -> void:
 			"animation_state": "sitting", "color": [200, 110, 20], "radius_m": 0.45})
 
 
+var _nature_counts := {}
+var _nature_seen := {}
+
+
+func _nature_readiness(camera_3d: Camera3D, hud: Array) -> Array:
+	_nature_seen = {}
+	var errors := []
+	if camera_3d == null: return ["nature needs active 3D camera"]
+	if _elapsed<20.0: return ["nature source and outer map streaming settling"]
+	var target: Array = scenario.get("nature_target", [])
+	for chunk in main.map_layer._chunks.values():
+		if not chunk._dynamic_3d.has("trees"): continue
+		var rows := []
+		for tree: Array in chunk._data.get("trees", []):
+			if not target.is_empty() and Vector2(tree[0],tree[1]).distance_to(Vector2(target[0],target[1]))>0.15: continue
+			var row: Array = chunk._tree_row(str(tree[2]),float(tree[3]))
+			row[0] = MapMath.point(chunk._origin,tree[0],tree[1])
+			row[5] = chunk._fallen.get(MapChunkScript.obstacle_key(tree[0],tree[1]),NAN)
+			rows.append(row)
+		for shrub: Array in chunk._data.get("scenery_objects", []):
+			if shrub[2]!="shrub": continue
+			if not target.is_empty() and Vector2(shrub[0],shrub[1]).distance_to(Vector2(target[0],target[1]))>0.15: continue
+			rows.append([MapMath.point(chunk._origin,shrub[0],shrub[1]),"shrub",0.6,MapChunkScript.seasonal_color(Color8(52,96,44),chunk._season),Color.BLACK,NAN])
+		for row: Array in rows:
+			if scenario.has("nature_kind") and row[1]!=scenario["nature_kind"]: continue
+			if scenario.get("nature_winter",false) and (not chunk._trees_leafless or chunk._season[0]<0.8): continue
+			if not is_nan(row[5]) or (row.size()>6 and row[6]): continue
+			var point := Buildings3D.to_3d(row[0],Buildings3D.ground_height(chunk.ground_heights,row[0]))
+			if camera_3d.global_position.distance_to(point)>100: continue
+			var expected := Buildings3D.nature_transform(row,chunk.ground_heights)
+			for batch: MultiMeshInstance3D in chunk._dynamic_3d.trees.get_children():
+				if batch.get_meta("nature_kind","")!=row[1] or not batch.is_visible_in_tree() or batch.layers & camera_3d.cull_mask==0: continue
+				var mesh := Buildings3D.nature_mesh(row[1])
+				if batch.multimesh.mesh!=mesh: continue
+				for i in batch.multimesh.instance_count:
+					var xf := batch.global_transform*batch.multimesh.get_instance_transform(i)
+					if not xf.is_equal_approx(expected): continue
+					var rect := Rect2()
+					var visible := true
+					for corner in 8:
+						var vertex := xf*mesh.get_aabb().get_endpoint(corner)
+						visible = visible and camera_3d.is_position_in_frustum(vertex)
+						var pixel := camera_3d.unproject_position(vertex)
+						rect = Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+					if not visible or rect.size.x<25 or rect.size.y<45: continue
+					if not Rect2(Vector2.ZERO,main.get_viewport_rect().size).encloses(rect): continue
+					var blocked := false
+					for panel: Rect2 in hud:
+						if panel.intersects(rect): blocked=true
+					if blocked: continue
+					var centre := xf*mesh.get_aabb().get_center()
+					for other in main.map_layer._chunks.values():
+						for solid: MeshInstance3D in other.meshes_3d:
+							if not solid.is_visible_in_tree() or solid.material_override!=Buildings3D._shared["material"]: continue
+							if not _felled_occluders.has(solid.mesh): _felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+							var inverse := solid.global_transform.affine_inverse()
+							if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera_3d.global_position,inverse*centre).is_empty():blocked=true
+					if blocked: continue
+					if not _nature_counts.has(mesh): _nature_counts[mesh]=mesh.get_faces().size()/3
+					_nature_seen={"kind":row[1],"source_triangles":_nature_counts[mesh],"surfaces":mesh.get_surface_count(),"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"position":[chunk._origin.x+row[0].x,chunk._origin.y-row[0].y],"ground_m":point.y,"instance_color":str(batch.multimesh.get_instance_color(i)),"leafless":chunk._trees_leafless}
+					return errors
+	return ["no complete unobscured mapped Cozy Nature model at useful screen size"]
+
+
 ## What the scenario needs and the scene does not show yet ([] when ready).
 func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
 	if state.is_empty():
 		return ["no state from the server yet"]
 	var missing := _hud_readiness() if scenario.has("hud_fixture") else []
+	if scenario.get("nature_profile",false) and _elapsed<30.0: missing.append("mapped-tree profile warmup")
 	if scenario.get("snow_visibility", false):
 		missing.append_array(_snow_readiness())
 	var pose: Array = scenario["pose"]
@@ -1489,7 +1563,9 @@ func _check_map(centre: Vector2) -> Array:
 		for c: Array in campers:
 			if absf(c[1] / c[0] - 1.0) > 0.1:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
+	if scenario.get("nature_glb", false): missing.append_array(_nature_readiness(camera_3d,hud))
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
+	if not _nature_seen.is_empty(): _counts["cozy_nature"] = _nature_seen
 	if not reflective.is_empty(): _counts["reflective_strips"] = reflective
 	if not fox.is_empty(): _counts["fox"] = fox
 	if not felled.is_empty(): _counts["felled_tree"] = felled

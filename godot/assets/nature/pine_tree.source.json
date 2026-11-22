@@ -1,0 +1,47 @@
+{
+ "slug": "pine-tree",
+ "triangles": 8032,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "pine-tree.glb",
+   "bytes": 949600
+  },
+  "blend": {
+   "name": "pine-tree.blend",
+   "bytes": 995301
+  },
+  "fbx": {
+   "name": "pine-tree.fbx",
+   "bytes": 1710652
+  },
+  "obj": {
+   "name": "pine-tree-obj.zip",
+   "bytes": 1240816
+  },
+  "usdz": {
+   "name": "pine-tree.usdz",
+   "bytes": 1590546
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "3.450 x 3.304 x 5.700",
+  "triangles": 8032,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "stylized pine tree, approx. 3.5 m wide, 5.7 m tall",
+  "notes": "trunk base at origin; five soft needle tiers with wavy drooping rims; low-poly friendly smooth shapes, no alpha cards",
+  "set": "Cozy Nature Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

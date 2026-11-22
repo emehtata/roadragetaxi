@@ -1,0 +1,55 @@
+{
+ "slug": "birch-tree",
+ "triangles": 22914,
+ "texture_px": 2048,
+ "triangles_light": 11456,
+ "texture_px_light": 1024,
+ "files": {
+  "glb": {
+   "name": "birch-tree.glb",
+   "bytes": 2081972
+  },
+  "blend": {
+   "name": "birch-tree.blend",
+   "bytes": 2245205
+  },
+  "fbx": {
+   "name": "birch-tree.fbx",
+   "bytes": 3857612
+  },
+  "obj": {
+   "name": "birch-tree-obj.zip",
+   "bytes": 2752883
+  },
+  "usdz": {
+   "name": "birch-tree.usdz",
+   "bytes": 3490752
+  },
+  "glb_light": {
+   "name": "birch-tree-light.glb",
+   "bytes": 942700
+  },
+  "fbx_light": {
+   "name": "birch-tree-light.fbx",
+   "bytes": 1985820
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "3.179 x 2.908 x 6.642",
+  "triangles": 22914,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "stylized birch tree, approx. 3 m wide, 7 m tall",
+  "notes": "trunk base at origin; slender white trunk with dark horizontal bark marks (raised patches following the bark) and darker base, thin rising branches, airy canopy of small light-green leaf clouds, no alpha cards",
+  "set": "Cozy Nature Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

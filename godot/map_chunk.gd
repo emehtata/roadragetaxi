@@ -1965,7 +1965,7 @@ func _tree_row(kind: String, variation: float) -> Array:
 		radius *= 0.6
 	else:
 		crown = seasonal_color(crown, _season)
-	return [Vector2.ZERO, kind, radius, crown, style["trunk"], NAN]
+	return [Vector2.ZERO, kind, radius, crown, style["trunk"], NAN, _trees_leafless and kind == "birch"]
 
 
 func _trees_3d() -> void:

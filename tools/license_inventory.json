@@ -3,6 +3,20 @@
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
     {
+      "name": "Grab3D Cozy Nature mapped trees and shrub",
+      "paths": ["godot/assets/nature/*"],
+      "purpose": "Mapped 3D pine, spruce, birch and shrub models",
+      "shipped": true,
+      "origin": "https://grab3d.com/kits/cozy-nature/; exact downloads/hashes in godot/assets/nature/*.json",
+      "copyright": "not named on source pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "Original manifests/notices and full CC0 text in godot/assets/nature/",
+      "obligations": "none (CC0); project policy retains provenance and fi/en/de credits",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
       "name": "Grab3D Cozy Cars primary fleet (CC0)",
       "paths": [
         "godot/assets/vehicles/cozy_cars/**"

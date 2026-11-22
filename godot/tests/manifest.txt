@@ -43,6 +43,7 @@ res://tests/outdoor_infrastructure_glb.gd
 res://tests/camping_props_glb.gd
 
 res://tests/cozy_cars.gd
+res://tests/cozy_nature.gd
 
 [excluded]
 res://tests/snow_visibility_render.gd  # native GPU rendered regression: needs a display

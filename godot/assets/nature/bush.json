@@ -1,0 +1,57 @@
+{
+  "source": "https://grab3d.com/models/nature/bush/",
+  "download": "https://grab3d.com/dl/bush/bush.glb",
+  "retrieved": "2026-11-22",
+  "sha256": "29e6c09939cf45327c9a1086515b78e383a62c30b0abe085f4348d30863bb695",
+  "license": "CC0-1.0",
+  "triangles": 11570,
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "bush_body",
+      "translation": [
+        -0.007826358079910278,
+        0,
+        0.005105823278427124
+      ]
+    },
+    {
+      "children": [
+        0
+      ],
+      "extras": {
+        "license": "CC0-1.0",
+        "source": "grab3d.com",
+        "dimensions_m": "1.327 x 1.263 x 1.091",
+        "triangles": 11570,
+        "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+        "generator": "Created by grab3d",
+        "created": "2026-09-26",
+        "real_size": "stylized round bush, approx. 1.2 m wide, 1.1 m tall",
+        "notes": "plant center at origin; soft leaf clouds in two greens with small pink flowers, short twigs visible at the base; no alpha cards",
+        "set": "Cozy Nature Kit"
+      },
+      "name": "bush"
+    }
+  ],
+  "materials": [
+    "bush_body_pbr"
+  ],
+  "selection": "Complete source; no removed parts. Uniform ground-centred fit; source foliage hue mask receives existing seasonal instance colour.",
+  "bounds_min": [
+    -0.663531094789505,
+    0,
+    -0.6316917836666107
+  ],
+  "bounds_max": [
+    0.663531094789505,
+    1.0907318592071533,
+    0.6316917836666107
+  ],
+  "dimensions_m": [
+    1.32706218957901,
+    1.0907318592071533,
+    1.2633835673332214
+  ],
+  "texture_px": 2048
+}

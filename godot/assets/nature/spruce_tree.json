@@ -1,0 +1,52 @@
+{
+  "source": "https://grab3d.com/models/nature/spruce-tree/",
+  "download": "https://grab3d.com/dl/spruce-tree/spruce-tree.glb",
+  "retrieved": "2026-11-22",
+  "sha256": "230006ba09fcc989da7f9f046664061882e33bbdbc590cc4b1cdb7ada95b2d92",
+  "license": "CC0-1.0",
+  "triangles": 14248,
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "spruce-tree_body"
+    },
+    {
+      "children": [
+        0
+      ],
+      "extras": {
+        "license": "CC0-1.0",
+        "source": "grab3d.com",
+        "dimensions_m": "3.485 x 3.485 x 7.790",
+        "triangles": 14248,
+        "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+        "generator": "Created by grab3d",
+        "created": "2026-10-25",
+        "real_size": "stylized norway spruce, approx. 3.5 m wide, 7.8 m tall",
+        "notes": "trunk base at origin; slim dense cone of nine stacked needle tiers with many drooping branch tips, soft hanging twig tassels in a lighter green, hanging cones in the upper third and a slender leader shoot; narrower and denser than the pine tree, no alpha cards",
+        "set": "Cozy Nature Kit"
+      },
+      "name": "spruce-tree"
+    }
+  ],
+  "materials": [
+    "spruce-tree_body_pbr"
+  ],
+  "selection": "Complete source; no removed parts. Uniform ground-centred fit; source foliage hue mask receives existing seasonal instance colour.",
+  "bounds_min": [
+    -1.7427488565444946,
+    0,
+    -1.7427488565444946
+  ],
+  "bounds_max": [
+    1.7427488565444946,
+    7.789999961853027,
+    1.7427488565444946
+  ],
+  "dimensions_m": [
+    3.4854977130889893,
+    7.789999961853027,
+    3.4854977130889893
+  ],
+  "texture_px": 2048
+}

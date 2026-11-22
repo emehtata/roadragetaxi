@@ -1,0 +1,47 @@
+{
+ "slug": "bush",
+ "triangles": 11570,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "bush.glb",
+   "bytes": 1410856
+  },
+  "blend": {
+   "name": "bush.blend",
+   "bytes": 1442934
+  },
+  "fbx": {
+   "name": "bush.fbx",
+   "bytes": 2540876
+  },
+  "obj": {
+   "name": "bush-obj.zip",
+   "bytes": 1866167
+  },
+  "usdz": {
+   "name": "bush.usdz",
+   "bytes": 2324064
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.327 x 1.263 x 1.091",
+  "triangles": 11570,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "stylized round bush, approx. 1.2 m wide, 1.1 m tall",
+  "notes": "plant center at origin; soft leaf clouds in two greens with small pink flowers, short twigs visible at the base; no alpha cards",
+  "set": "Cozy Nature Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

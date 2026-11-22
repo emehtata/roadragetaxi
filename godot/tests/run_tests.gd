@@ -4154,7 +4154,7 @@ func test_buildings_3d() -> void:
 		node.free()
 	var grove := B3.trees_node([[Vector2.ZERO, "birch", 2.0, Color.GREEN, Color.WHITE, NAN], [Vector2(5, 0), "spruce", 2.0, Color.DARK_GREEN, Color.BROWN, NAN]], PackedVector2Array([Vector2(9, 0)]))
 	var counts: Array = grove.get_children().map(func(n): return n.multimesh.instance_count)
-	check(grove.get_child_count() == 3 and counts.reduce(func(a, b): return a + b) == 5, "trees as instances: two trunks and a bollard, a crown, a cone")
+	check(grove.get_child_count() == 3 and counts.reduce(func(a, b): return a + b) == 3, "trees as instances: two complete kit models and a bollard")
 	grove.free()
 	# rtx-scene-readiness step 6: every vehicle kind, person pose and larger animal has a 3D body
 	for kind in EntityLayer.VEHICLES_3D + ["trailer", "train", "tram"]:

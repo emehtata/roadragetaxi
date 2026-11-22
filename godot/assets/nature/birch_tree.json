@@ -1,0 +1,68 @@
+{
+  "source": "https://grab3d.com/models/nature/birch-tree/",
+  "download": "https://grab3d.com/dl/birch-tree/birch-tree.glb",
+  "retrieved": "2026-11-22",
+  "sha256": "5cb33a29d63a6b13b9799c8d950895aa1a8874e99b456a53a8f89a4e109009f0",
+  "license": "CC0-1.0",
+  "triangles": 22914,
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "birch-tree_bark_marks",
+      "translation": [
+        -0.0016592144966125488,
+        0,
+        -0.0005530714988708496
+      ]
+    },
+    {
+      "mesh": 1,
+      "name": "birch-tree_body",
+      "translation": [
+        -0.0016592144966125488,
+        0,
+        -0.0005530714988708496
+      ]
+    },
+    {
+      "children": [
+        0,
+        1
+      ],
+      "extras": {
+        "license": "CC0-1.0",
+        "source": "grab3d.com",
+        "dimensions_m": "3.179 x 2.908 x 6.642",
+        "triangles": 22914,
+        "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+        "generator": "Created by grab3d",
+        "created": "2026-09-26",
+        "real_size": "stylized birch tree, approx. 3 m wide, 7 m tall",
+        "notes": "trunk base at origin; slender white trunk with dark horizontal bark marks (raised patches following the bark) and darker base, thin rising branches, airy canopy of small light-green leaf clouds, no alpha cards",
+        "set": "Cozy Nature Kit"
+      },
+      "name": "birch-tree"
+    }
+  ],
+  "materials": [
+    "birch-tree_bark_marks_x",
+    "birch-tree_body_pbr"
+  ],
+  "selection": "Complete source; no removed parts. Uniform ground-centred fit; source foliage hue mask receives existing seasonal instance colour.",
+  "bounds_min": [
+    -1.5895480513572693,
+    0,
+    -1.4540985226631165
+  ],
+  "bounds_max": [
+    1.5895480513572693,
+    6.642446994781494,
+    1.4540985226631165
+  ],
+  "dimensions_m": [
+    3.1790961027145386,
+    6.642446994781494,
+    2.908197045326233
+  ],
+  "texture_px": 2048
+}

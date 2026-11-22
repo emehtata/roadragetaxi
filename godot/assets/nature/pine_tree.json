@@ -1,0 +1,52 @@
+{
+  "source": "https://grab3d.com/models/nature/pine-tree/",
+  "download": "https://grab3d.com/dl/pine-tree/pine-tree.glb",
+  "retrieved": "2026-11-22",
+  "sha256": "df4c7f7bbaeebfc9541f99b7212b9dfd0ff58eff1b6440efa1144175335582c1",
+  "license": "CC0-1.0",
+  "triangles": 8032,
+  "nodes": [
+    {
+      "mesh": 0,
+      "name": "pine-tree_body"
+    },
+    {
+      "children": [
+        0
+      ],
+      "extras": {
+        "license": "CC0-1.0",
+        "source": "grab3d.com",
+        "dimensions_m": "3.450 x 3.304 x 5.700",
+        "triangles": 8032,
+        "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+        "generator": "Created by grab3d",
+        "created": "2026-09-26",
+        "real_size": "stylized pine tree, approx. 3.5 m wide, 5.7 m tall",
+        "notes": "trunk base at origin; five soft needle tiers with wavy drooping rims; low-poly friendly smooth shapes, no alpha cards",
+        "set": "Cozy Nature Kit"
+      },
+      "name": "pine-tree"
+    }
+  ],
+  "materials": [
+    "pine-tree_body_pbr"
+  ],
+  "selection": "Complete source; no removed parts. Uniform ground-centred fit; source foliage hue mask receives existing seasonal instance colour.",
+  "bounds_min": [
+    -1.7251251935958862,
+    0,
+    -1.6517622470855713
+  ],
+  "bounds_max": [
+    1.7251251935958862,
+    5.699999809265137,
+    1.6517622470855713
+  ],
+  "dimensions_m": [
+    3.4502503871917725,
+    5.699999809265137,
+    3.3035244941711426
+  ],
+  "texture_px": 2048
+}

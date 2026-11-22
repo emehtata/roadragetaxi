@@ -3006,7 +3006,7 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 ## Step 5: a chunk's trees and bollards as instances of shared meshes (one
 ## MultiMesh each: trunks, round crowns, conifer cones, bollards), rebuilt
 ## when the chunk redraws them (one felled, the season); rows
-## [position, kind, crown radius, crown colour, trunk colour, felled angle or NAN].
+## [position, kind, crown radius, crown colour, trunk colour, felled angle or NAN, optional leafless].
 static var _tree_meshes := {}
 const FOREST_NEAR_M := 400.0  # forest_node: detailed crowns nearer (the chunk's centre), simple ones beyond
 
@@ -3064,11 +3064,70 @@ static func _tree_mesh(name: String) -> Mesh:
 	return _tree_meshes[name]
 
 
+const NATURE_SCENES := {
+	"pine": preload("res://assets/nature/pine_tree.glb"),
+	"spruce": preload("res://assets/nature/spruce_tree.glb"),
+	"birch": preload("res://assets/nature/birch_tree.glb"),
+	"shrub": preload("res://assets/nature/bush.glb"),
+}
+static var _nature_meshes := {}
+
+
+static func nature_mesh(kind: String) -> ArrayMesh:
+	if _nature_meshes.has(kind): return _nature_meshes[kind]
+	var mesh := merged_model("nature_" + kind, NATURE_SCENES[kind]).duplicate() as ArrayMesh
+	for surface in mesh.get_surface_count():
+		var source: StandardMaterial3D = mesh.surface_get_material(surface)
+		if not source.resource_name.ends_with("_pbr"): continue
+		var material := ShaderMaterial.new()
+		material.shader = preload("res://nature.gdshader")
+		material.set_shader_parameter("base_color", source.albedo_texture)
+		material.set_shader_parameter("metallic_roughness", source.metallic_texture)
+		material.set_shader_parameter("normal_texture", source.normal_texture)
+		mesh.surface_set_material(surface, material)
+	_nature_meshes[kind] = mesh
+	return mesh
+
+
+static func nature_transform(row: Array, grid := {}) -> Transform3D:
+	var box := nature_mesh(row[1]).get_aabb()
+	var radius: float = row[2]
+	var conifer: bool = row[1] in ["pine", "spruce"]
+	var height := radius * (1.24 if row[1] == "shrub" else (2.6 if row[1] == "pine" else 1.0 if row[1] == "spruce" else 1.6) + (3.2 if conifer else 1.6))
+	var scale := minf(2.0 * radius / maxf(box.size.x, box.size.z), height / box.size.y)
+	var at: Vector2 = row[0]
+	var turn := Basis(Vector3.UP, fposmod(at.x * 12.9898 + at.y * 78.233, TAU)).scaled(Vector3.ONE * scale)
+	return Transform3D(turn, to_3d(at, ground_height(grid, at)) - turn * Vector3(box.get_center().x, box.position.y, box.get_center().z))
+
+
 ## `grid`: the chunk's DEM ground (trunks stand on it); `far`: the simple
 ## shapes (one cone or blob per crown) instead of the species' crowns.
-static func trees_node(rows: Array, bollards: PackedVector2Array, grid := {}, far := false) -> Node3D:
-	var parts := tree_parts(rows, bollards, grid, far)
+static func trees_node(rows: Array, bollards: PackedVector2Array, grid := {}, far := false, kit := true) -> Node3D:
+	var primitive := []
+	var models := {}
+	for row: Array in rows:
+		# Bare birch and felled trees keep their verified geometry: source foliage is inseparable.
+		if kit and not far and is_nan(row[5]) and not (row.size() > 6 and row[6]) and NATURE_SCENES.has(row[1]):
+			if not models.has(row[1]): models[row[1]] = []
+			models[row[1]].append(row)
+		else: primitive.append(row)
+	var parts := tree_parts(primitive, bollards, grid, far)
 	var node := Node3D.new()
+	for kind: String in models:
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.use_colors = true
+		multi.mesh = nature_mesh(kind)
+		multi.instance_count = models[kind].size()
+		for i in models[kind].size():
+			multi.set_instance_transform(i, nature_transform(models[kind][i], grid))
+			multi.set_instance_color(i, models[kind][i][3])
+		var instance := MultiMeshInstance3D.new()
+		instance.multimesh = multi
+		instance.layers = LAYER_BUILDINGS
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		instance.set_meta("nature_kind", kind)
+		node.add_child(instance)
 	for name in parts:
 		if parts[name].is_empty():
 			continue
@@ -3128,10 +3187,10 @@ static func tree_parts(rows: Array, bollards: PackedVector2Array, grid := {}, fa
 ## crowns within FOREST_NEAR_M of the camera, simple cones and blobs beyond
 ## (Godot's visibility ranges, per chunk instance batch).
 static func forest_node(rows: Array, grid: Dictionary) -> Node3D:
-	var node := trees_node(rows, PackedVector2Array(), grid)
+	var node := trees_node(rows, PackedVector2Array(), grid, false, false)
 	for child: GeometryInstance3D in node.get_children():
 		child.visibility_range_end = FOREST_NEAR_M
-	var far := trees_node(rows, PackedVector2Array(), grid, true)
+	var far := trees_node(rows, PackedVector2Array(), grid, true, false)
 	for child: GeometryInstance3D in far.get_children():
 		child.visibility_range_begin = FOREST_NEAR_M
 		child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

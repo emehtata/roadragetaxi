@@ -1,0 +1,47 @@
+{
+ "slug": "spruce-tree",
+ "triangles": 14248,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "spruce-tree.glb",
+   "bytes": 904008
+  },
+  "blend": {
+   "name": "spruce-tree.blend",
+   "bytes": 984348
+  },
+  "fbx": {
+   "name": "spruce-tree.fbx",
+   "bytes": 1733948
+  },
+  "obj": {
+   "name": "spruce-tree-obj.zip",
+   "bytes": 991954
+  },
+  "usdz": {
+   "name": "spruce-tree.usdz",
+   "bytes": 1528069
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "3.485 x 3.485 x 7.790",
+  "triangles": 14248,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-25",
+  "real_size": "stylized norway spruce, approx. 3.5 m wide, 7.8 m tall",
+  "notes": "trunk base at origin; slim dense cone of nine stacked needle tiers with many drooping branch tips, soft hanging twig tassels in a lighter green, hanging cones in the upper third and a slender leader shoot; narrower and denser than the pine tree, no alpha cards",
+  "set": "Cozy Nature Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}
