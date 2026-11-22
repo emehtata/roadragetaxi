@@ -1486,7 +1486,7 @@ func _check_map(centre: Vector2) -> Array:
 				if mesh.get_instance_shader_parameter("lamp_bits")!=fleet_lamps:missing.append("Cozy fleet incorrect lamp state "+kind)
 				if node.basis.z.normalized().dot(Vector3(cos(float(target.heading)),0,-sin(float(target.heading))))<0.99:missing.append("Cozy fleet heading differs "+kind)
 				var triangles:=0
-				for surface in mesh.mesh.get_surface_count():triangles+=mesh.mesh.get_surface_array_index_len(surface)/3
+				for surface in mesh.mesh.get_surface_count():triangles+=mesh.mesh.surface_get_array_index_len(surface)/3
 				if triangles!={"saloon":17770,"city_car":17338,"hatchback":19726,"estate":19308,"suv":19882,"pickup":19709,"sports":16856}[kind]:missing.append("Cozy fleet source triangles missing "+kind)
 				fleet[kind]={"triangles":triangles,"materials":mesh.mesh.get_surface_count(),"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"source":Buildings3D.MODEL_SCENES[kind].resource_path,"ground_error_m":ground_error,"lamp_bits":fleet_lamps}
 			if not found:missing.append("Cozy fleet production model absent "+kind)
