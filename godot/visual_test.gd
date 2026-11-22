@@ -246,6 +246,16 @@ func _ready() -> void:
 				if Buildings3D.car_model_kind(main.entities.CAR_SHAPES[absi(hash(id))%main.entities.CAR_SHAPES.size()],lengths[i])==kinds[i]:break
 			var at:=_on_road(-15.0+i*5.5,3.5)
 			main.entities.extra_npcs.append({"id":id,"x":at.x,"y":at.y,"heading":scenario.pose[2],"length_m":lengths[i],"width_m":1.7 if i==1 else 1.9 if i in [4,5] else 1.8,"color":[75+i*20,125,185-i*13],"vehicle_type":"car","state":"DRIVING" if scenario.get("cozy_lamps",false) else "PARKED","speed":0.0,"is_taxi":false,"braking":scenario.get("cozy_lamps",false),"turn_signal":"hazard" if scenario.get("cozy_lamps",false) else "","turn_signal_elapsed":0.0})
+	if scenario.has("windscreen_model"):
+		var kind: String = scenario["windscreen_model"]
+		var id := ""
+		for i in 100:
+			id = "windscreen_%d" % i
+			var shape: Array = main.entities.VAN_SHAPE if kind == "panel_van" else main.entities.CAR_SHAPES[absi(hash(id)) % main.entities.CAR_SHAPES.size()]
+			if Buildings3D.car_model_kind(shape, 4.6) == kind: break
+		var at := _on_road(6.0, 3.5)
+		main.entities.extra_npcs = [{"id":id,"x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI,"length_m":4.6,"width_m":1.8,
+			"color":[175,85,48],"vehicle_type":"van" if kind == "panel_van" else "car","state":"PARKED","speed":0.0,"is_taxi":false}]
 	if scenario.get("fox_orientation", false):
 		var at := _on_road(9.0, 0.9)
 		scenario["animals"] = [["fox", at.x, at.y, float(scenario["pose"][2]) + PI - 0.3]]
@@ -261,16 +271,6 @@ func _ready() -> void:
 		var at := _on_road(18.0, 0.9)
 		main.entities.extra_trains = [{"id":"vqa_coach_vent","name":"train coach","width_m":2.89,"state":"STOPPED","speed":0.0,"line":"",
 			"cars":[[at.x,at.y,float(scenario["pose"][2]),26.4,"standard"]]}]
-	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model"):
-		var kind: String = scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
-		var id := ""
-		for i in 100:
-			id = "windscreen_%d" % i
-			var shape: Array = main.entities.VAN_SHAPE if kind == "panel_van" else main.entities.CAR_SHAPES[absi(hash(id)) % main.entities.CAR_SHAPES.size()]
-			if Buildings3D.car_model_kind(shape, 4.6) == kind: break
-		var at := _on_road(6.0, 3.5)
-		main.entities.extra_npcs = [{"id":id,"x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI,"length_m":4.6,"width_m":1.8,
-			"color":[175,85,48],"vehicle_type":"van" if kind == "panel_van" else "car","state":"PARKED","speed":0.0,"is_taxi":false}]
 	if scenario.get("city_bus_orientation", false):
 		var at := _on_road(28.0, 0.9)
 		main.entities.extra_npcs = [{"id":"vqa_city_bus","x":at.x,"y":at.y,"heading":float(scenario["pose"][2])+PI*0.95,
@@ -828,7 +828,7 @@ func _check_map(centre: Vector2) -> Array:
 			missing.append("%d %s in view, the scenario needs %d" % [int(seen.get(kind, 0)), kind, wanted[kind]])
 	var boxes := []  # [name, corners]: every lineup body, in view, clear of the HUD (and in 3D of the buildings)
 	for npc in main.entities.extra_npcs:
-		if scenario.has("windscreen_model") or scenario.has("two_wheeler_model"): continue  # checked below against its actual pooled mesh, not a 3.5 m truck envelope
+		if scenario.has("windscreen_model") or scenario.has("two_wheeler_model") or scenario.get("city_bus_orientation", false): continue  # checked below against its actual pooled mesh, not a 3.5 m truck envelope
 		boxes.append([npc["vehicle_type"], _corners(npc["x"], npc["y"], npc["heading"], npc["length_m"], npc["width_m"])])
 		if npc.has("trailer"):
 			var t: Array = npc["trailer"]
@@ -1391,8 +1391,8 @@ func _check_map(centre: Vector2) -> Array:
 				"person_rect":[rects[0].position.x,rects[0].position.y,rects[0].size.x,rects[0].size.y],"chest_rect":[rects[1].position.x,rects[1].position.y,rects[1].size.x,rects[1].size.y]}
 		if not found: missing.append("expected reflective pedestrian not drawn")
 	var windscreen := {}
-	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model") or scenario.get("coach_roof_vent", false):
-		var kind: String = "train_coach" if scenario.get("coach_roof_vent", false) else scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
+	if scenario.has("windscreen_model") or scenario.has("two_wheeler_model") or scenario.get("city_bus_orientation", false) or scenario.get("coach_roof_vent", false):
+		var kind: String = "train_coach" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else scenario.get("windscreen_model", scenario.get("two_wheeler_model", ""))
 		var pool: Array = [] if layer_3d_view() == null else layer_3d_view()._model_nodes.get(kind, [])
 		var target: Dictionary
 		if scenario.get("coach_roof_vent", false):
