@@ -1509,6 +1509,13 @@ func _check_map(centre: Vector2) -> Array:
 	if buildings < int(needs.get("buildings_in_view", 0)):
 		missing.append("%d buildings in view, the scenario needs %d" % [buildings, needs["buildings_in_view"]])
 	var layer_3d = main.map_layer.buildings_3d
+	for body: String in ["sun", "moon"]:  # sun-moon-in-sky: the disc above the horizon and inside the camera's view
+		if needs.get(body + "_in_view", false):
+			var alt := Daylight.moon_value(main.entities.shown_state(), body + "_altitude_deg", -90.0)
+			var az := Daylight.moon_value(main.entities.shown_state(), body + "_azimuth_deg", 0.0)
+			var cam: Camera3D = layer_3d._camera if layer_3d != null else null
+			if alt <= 0.0 or cam == null or not cam.is_position_in_frustum(cam.global_position + Daylight.sun_direction(alt, az, -90.0) * minf(1000.0, cam.far * 0.5)):
+				missing.append("the %s (alt %.1f, az %.1f) is not in view" % [body, alt, az])
 	if MapChunkScript.outdoor_3d and (layer_3d == null or (layer_3d._street_lights.is_empty() and layer_3d.opaque)):
 		missing.append("the 3D view's lights are not made yet")
 	if needs.get("outdoor_3d", false) and not MapChunkScript.outdoor_3d:
@@ -1521,13 +1528,6 @@ func _check_map(centre: Vector2) -> Array:
 		if cars < int(needs["car_models_in_view"]):
 			missing.append("%d 3D car models in view, the scenario needs %d" % [cars, needs["car_models_in_view"]])
 	if needs.has("train_models_in_view"):
-	for body: String in ["sun", "moon"]:  # sun-moon-in-sky: the disc above the horizon and inside the camera's view
-		if needs.get(body + "_in_view", false):
-			var alt := Daylight.moon_value(main.entities.shown_state(), body + "_altitude_deg", -90.0)
-			var az := Daylight.moon_value(main.entities.shown_state(), body + "_azimuth_deg", 0.0)
-			var cam: Camera3D = layer_3d._camera if layer_3d != null else null
-			if alt <= 0.0 or cam == null or not cam.is_position_in_frustum(cam.global_position + Daylight.sun_direction(alt, az, -90.0) * minf(1000.0, cam.far * 0.5)):
-				missing.append("the %s (alt %.1f, az %.1f) is not in view" % [body, alt, az])
 		var trains: int = 0 if layer_3d == null else int(layer_3d._model_used.get("train_locomotive", 0)) + int(layer_3d._model_used.get("train_coach", 0))
 		if trains < int(needs["train_models_in_view"]):
 			missing.append("%d train models in view, the scenario needs %d" % [trains, needs["train_models_in_view"]])
