@@ -3,6 +3,22 @@
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
     {
+      "name": "Grab3D Cozy Retro Cars variants (CC0)",
+      "paths": [
+        "godot/assets/vehicles/cozy_retro_cars/**"
+      ],
+      "purpose": "Eight ordinary-car visual variants alongside primary Cozy Cars",
+      "shipped": true,
+      "origin": "https://grab3d.com/kits/cozy-retro-cars/; exact source URLs/hashes in asset JSON",
+      "copyright": "not named on source pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "Original source manifests/notices and full CC0 legal text retained with assets",
+      "obligations": "none (CC0); project policy retains provenance and fi/en/de displayed credits",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
       "name": "Grab3D Cozy Nature mapped trees and shrub",
       "paths": ["godot/assets/nature/*"],
       "purpose": "Mapped 3D pine, spruce, birch and shrub models",

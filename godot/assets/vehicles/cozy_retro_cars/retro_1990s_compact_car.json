@@ -1,0 +1,396 @@
+{
+  "source_bounds_min_xyz_m": [
+    -0.887951731681824,
+    0.0,
+    -1.86181354522705
+  ],
+  "source_dimensions_xyz_m": [
+    1.77590358257294,
+    1.52999997138977,
+    3.7236270904541
+  ],
+  "source_materials": [
+    {
+      "name": "1990s-compact-car_body_pbr",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_compact_car_1990s-compact-car_body_basecolor.jpg"
+    },
+    {
+      "name": "1990s-compact-car_tire_x",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_compact_car_1990s-compact-car_tire_color.jpg"
+    },
+    {
+      "name": "1990s-compact-car_rim_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_compact_car_1990s-compact-car_tire_color.jpg"
+    },
+    {
+      "name": "1990s-compact-car_rim_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_compact_car_1990s-compact-car_tire_color.jpg"
+    },
+    {
+      "name": "1990s-compact-car_rim_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_compact_car_1990s-compact-car_tire_color.jpg"
+    },
+    {
+      "name": "1990s-compact-car_rim_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-compact-car_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.887951731681824,
+        0.200000002980232,
+        -1.86181354522705
+      ],
+      "name": "1990s-compact-car_body",
+      "size": [
+        1.77590358257294,
+        1.32999992370605,
+        3.7236270904541
+      ]
+    },
+    {
+      "min": [
+        0.580057442188263,
+        0.0,
+        0.791300058364868
+      ],
+      "name": "1990s-compact-car_wheel_fl",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        -0.779942572116852,
+        0.0,
+        0.791300058364868
+      ],
+      "name": "1990s-compact-car_wheel_fr",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        0.580057561397552,
+        0.0,
+        -1.40869998931885
+      ],
+      "name": "1990s-compact-car_wheel_rl",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        -0.779942452907562,
+        0.0,
+        -1.40869998931885
+      ],
+      "name": "1990s-compact-car_wheel_rr",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        -0.668710350990295,
+        0.87472015619278,
+        -1.58071088790894
+      ],
+      "name": "1990s-compact-car_windows",
+      "size": [
+        1.33741998672485,
+        0.506860792636871,
+        2.17873740196228
+      ]
+    }
+  ],
+  "triangles": 15217,
+  "file": "godot/assets/vehicles/cozy_retro_cars/retro_1990s_compact_car.glb",
+  "family": "city_car",
+  "source": "Grab3D",
+  "kit": "Cozy Retro Cars",
+  "page_url": "https://grab3d.com/models/vehicles/1990s-compact-car/",
+  "download_url": "https://grab3d.com/dl/1990s-compact-car/1990s-compact-car.glb",
+  "download_date": "2026-11-23",
+  "sha256": "e499009a4920598a6d0cfd6f5d388eb8561adc007a7badea1336aef95aef925d",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "runtime": "Unchanged complete source; bake node transforms and merge equivalent materials; source +Z forward. Uniform min(sim length/source length,sim width/source width); stable salted NPC identity chooses primary/retro. Keep source textures, trim, glass, wheels; paint hue mask and measured native lens emission plus source-contact reverse/indicator overlays.",
+  "lamp_regions_source_m": {
+    "front_min_z": 1.64181354522705,
+    "rear_max_z": -1.46181354522705,
+    "front_y_range": [
+      0.49,
+      0.67
+    ],
+    "rear_y_range": [
+      0.51,
+      0.76
+    ],
+    "white_front_lenses": true
+  },
+  "source_textures": [
+    {
+      "name": "1990s-compact-car_body_normal",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-compact-car_body_basecolor",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-compact-car_body_metallic-1990s-compact-car_body_roughness",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-compact-car_tire_normal",
+      "pixels": [
+        64,
+        256
+      ]
+    },
+    {
+      "name": "1990s-compact-car_tire_color",
+      "pixels": [
+        64,
+        256
+      ]
+    }
+  ],
+  "source_forward_axis": "+Z",
+  "source_ground_y_m": 0,
+  "lighter_variant": "none offered (source manifest triangles_light=null)",
+  "source_material_factors": [
+    {
+      "name": "1990s-compact-car_body_pbr",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_tire_x",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_rim_x",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x",
+      "base_color_linear_rgba": [
+        0.4793201684951782,
+        0.3613067865371704,
+        0.8549926280975342,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_tire_x.001",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_rim_x.001",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x.001",
+      "base_color_linear_rgba": [
+        0.4793201684951782,
+        0.3613067865371704,
+        0.8549926280975342,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x.001",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_tire_x.002",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_rim_x.002",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x.002",
+      "base_color_linear_rgba": [
+        0.4793201684951782,
+        0.3613067865371704,
+        0.8549926280975342,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x.002",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_tire_x.003",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_rim_x.003",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_hubcap_x.003",
+      "base_color_linear_rgba": [
+        0.4793201684951782,
+        0.3613067865371704,
+        0.8549926280975342,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_trim_charcoal_x.003",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-compact-car_window_glass_x",
+      "base_color_linear_rgba": [
+        0.520995557308197,
+        0.7681511640548706,
+        0.8549926280975342,
+        0.41999998688697815
+      ]
+    }
+  ],
+  "lamp_adaptation": "Use source yellow or white headlamp and red tail lens texels only inside measured source-space height/depth bands; existing live bits control native lens emission. Reverse/indicators retain existing source-triangle-contact overlays; full body/attachment heading, pitch, roll and road elevation applied."
+}

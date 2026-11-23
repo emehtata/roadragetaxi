@@ -235,17 +235,22 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
-	if scenario.get("cozy_fleet",false):
+	if scenario.get("cozy_fleet",false) or scenario.get("retro_profile",false):
 		main.entities.extra_npcs=[]
-		var kinds:=["saloon","city_car","hatchback","estate","suv","pickup","sports"]
-		var lengths:=[4.6,3.8,4.5,4.8,4.8,5.0,4.7]
+		var kinds:Array=scenario.get("retro_families",["saloon","city_car","hatchback","estate","suv","pickup","sports"])
+		var lengths:=[]
+		for family:String in kinds:lengths.append({"saloon":4.6,"city_car":3.8,"hatchback":4.5,"estate":4.8,"suv":4.8,"pickup":5.0,"sports":4.7,"panel_van":5.2}[family])
 		for i in kinds.size():
 			var id:=0
-			for candidate in 200:
+			for candidate in 2000:
+				if scenario.has("retro_ids"):id=int(scenario.retro_ids[i]);break
 				id=1000000+i*1000+candidate
-				if Buildings3D.car_model_kind(main.entities.CAR_SHAPES[absi(hash(id))%main.entities.CAR_SHAPES.size()],lengths[i])==kinds[i]:break
-			var at:=_on_road(-15.0+i*5.5,3.5)
-			main.entities.extra_npcs.append({"id":id,"x":at.x,"y":at.y,"heading":scenario.pose[2],"length_m":lengths[i],"width_m":1.7 if i==1 else 1.9 if i in [4,5] else 1.8,"color":[75+i*20,125,185-i*13],"vehicle_type":"car","state":"DRIVING" if scenario.get("cozy_lamps",false) else "PARKED","speed":0.0,"is_taxi":false,"braking":scenario.get("cozy_lamps",false),"turn_signal":"hazard" if scenario.get("cozy_lamps",false) else "","turn_signal_elapsed":0.0})
+				var family:String=Buildings3D.car_model_kind(main.entities.VAN_SHAPE if kinds[i]=="panel_van" else main.entities.CAR_SHAPES[absi(hash(id))%main.entities.CAR_SHAPES.size()],lengths[i])
+				if family!=kinds[i]:continue
+				var selected:String=Buildings3D.model_variant(family,"retro|"+str(id))
+				if selected.begins_with("retro_")==scenario.has("retro_families"):break
+			var at:=_on_road(-(kinds.size()-1)*2.75+i*5.5,3.5)
+			main.entities.extra_npcs.append({"id":id,"x":at.x,"y":at.y,"heading":scenario.pose[2],"length_m":lengths[i],"width_m":2.0 if kinds[i]=="panel_van" else 1.7 if kinds[i]=="city_car" else 1.9 if kinds[i] in ["suv","pickup"] else 1.8,"color":[75+i*20,125,185-i*13],"vehicle_type":"van" if kinds[i]=="panel_van" else "car","state":"DRIVING" if scenario.get("cozy_lamps",false) else "PARKED","speed":0.0,"is_taxi":false,"braking":scenario.get("cozy_lamps",false),"turn_signal":"hazard" if scenario.get("cozy_lamps",false) else "","turn_signal_elapsed":0.0})
 	if scenario.has("windscreen_model"):
 		var kind: String = scenario["windscreen_model"]
 		var id := ""
@@ -1466,8 +1471,9 @@ func _check_map(centre: Vector2) -> Array:
 	if scenario.get("cozy_fleet",false):
 		var fleet:={};var layer=layer_3d_view()
 		for target:Dictionary in main.entities.extra_npcs:
-			var shape:Array=main.entities.CAR_SHAPES[absi(hash(target.id))%main.entities.CAR_SHAPES.size()]
-			var kind:=Buildings3D.car_model_kind(shape,float(target.length_m))
+			var shape:Array=main.entities.VAN_SHAPE if target.vehicle_type=="van" else main.entities.CAR_SHAPES[absi(hash(target.id))%main.entities.CAR_SHAPES.size()]
+			var family:=Buildings3D.car_model_kind(shape,float(target.length_m))
+			var kind:=Buildings3D.model_variant(family,"retro|"+str(target.id))
 			var local:=MapMath.point(main.entities.origin,float(target.x),float(target.y));var found:=false
 			for node:Node3D in ([] if layer==null else layer._model_nodes.get(kind,[])):
 				if not node.visible or Vector2(node.position.x,node.position.z).distance_to(local)>0.1:continue
@@ -1487,11 +1493,27 @@ func _check_map(centre: Vector2) -> Array:
 				if node.basis.z.normalized().dot(Vector3(cos(float(target.heading)),0,-sin(float(target.heading))))<0.99:missing.append("Cozy fleet heading differs "+kind)
 				var triangles:=0
 				for surface in mesh.mesh.get_surface_count():triangles+=mesh.mesh.surface_get_array_index_len(surface)/3
-				if triangles!={"saloon":17770,"city_car":17338,"hatchback":19726,"estate":19308,"suv":19882,"pickup":19709,"sports":16856}[kind]:missing.append("Cozy fleet source triangles missing "+kind)
+				var expected:int=JSON.parse_string(FileAccess.get_file_as_string("res://assets/vehicles/cozy_retro_cars/"+kind+".json")).triangles if kind.begins_with("retro_") else {"saloon":17770,"city_car":17338,"hatchback":19726,"estate":19308,"suv":19882,"pickup":19709,"sports":16856}[kind]
+				if triangles!=expected:missing.append("Cozy fleet source triangles missing "+kind)
 				fleet[kind]={"triangles":triangles,"materials":mesh.mesh.get_surface_count(),"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"source":Buildings3D.MODEL_SCENES[kind].resource_path,"ground_error_m":ground_error,"lamp_bits":fleet_lamps}
 			if not found:missing.append("Cozy fleet production model absent "+kind)
-		if fleet.size()!=7:missing.append("Cozy fleet needs all seven mapped source models")
+		if fleet.size()!=scenario.get("retro_families",[0,1,2,3,4,5,6]).size():missing.append("Cozy fleet needs all requested source models")
 		cozy_fleet_result=fleet
+	var retro_profile_result:=[]
+	if scenario.get("retro_profile",false):
+		var models:=[];var layer=layer_3d_view()
+		for target:Dictionary in main.entities.extra_npcs:
+			var shape:Array=main.entities.VAN_SHAPE if target.vehicle_type=="van" else main.entities.CAR_SHAPES[absi(hash(target.id))%main.entities.CAR_SHAPES.size()]
+			var family:=Buildings3D.car_model_kind(shape,float(target.length_m));var kind:=Buildings3D.model_variant(family,"retro|"+str(target.id))
+			var local:=MapMath.point(main.entities.origin,float(target.x),float(target.y));var found:=false
+			for node:Node3D in ([] if layer==null else layer._model_nodes.get(kind,[])):
+				if not node.visible or Vector2(node.position.x,node.position.z).distance_to(local)>.1:continue
+				found=true;var mesh:MeshInstance3D=node.get_child(0);var triangles:=0
+				for surface in mesh.mesh.get_surface_count():triangles+=mesh.mesh.surface_get_array_index_len(surface)/3
+				models.append({"id":target.id,"kind":kind,"triangles":triangles,"source":Buildings3D.MODEL_SCENES[kind].resource_path})
+			if not found:missing.append("controlled car workload missing source "+kind)
+		if models.size()!=scenario.retro_ids.size():missing.append("controlled car workload population differs")
+		retro_profile_result=models
 	var needs: Dictionary = scenario.get("requires", {})
 	if lamps < int(needs.get("lamps_in_view", 0)):
 		missing.append("%d street lamps in view, the scenario needs %d" % [lamps, needs["lamps_in_view"]])
@@ -1584,6 +1606,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not cozy_fleet_result.is_empty(): _counts["cozy_cars_fleet"]=cozy_fleet_result
+	if not retro_profile_result.is_empty(): _counts["retro_profile_models"]=retro_profile_result
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
 	if not campers.is_empty():

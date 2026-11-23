@@ -1,0 +1,396 @@
+{
+  "source_bounds_min_xyz_m": [
+    -1.01327049732208,
+    0.0,
+    -2.66022515296936
+  ],
+  "source_dimensions_xyz_m": [
+    2.02654123306274,
+    1.90000081062317,
+    5.32045030593872
+  ],
+  "source_materials": [
+    {
+      "name": "1990s-pickup-truck_body_pbr",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck_1990s-pickup-truck_body_basecolor.jpg"
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck_1990s-pickup-truck_tire_color.jpg"
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck_1990s-pickup-truck_tire_color.jpg"
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck_1990s-pickup-truck_tire_color.jpg"
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck_1990s-pickup-truck_tire_color.jpg"
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-pickup-truck_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -1.01327049732208,
+        0.297153651714325,
+        -2.66022515296936
+      ],
+      "name": "1990s-pickup-truck_body",
+      "size": [
+        2.02654123306274,
+        1.6028470993042,
+        5.32045030593872
+      ]
+    },
+    {
+      "min": [
+        0.685071766376495,
+        0.0,
+        1.28977465629578
+      ],
+      "name": "1990s-pickup-truck_wheel_fl",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        -0.934928238391876,
+        0.0,
+        1.28977465629578
+      ],
+      "name": "1990s-pickup-truck_wheel_fr",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        0.685071885585785,
+        0.0,
+        -1.95022535324097
+      ],
+      "name": "1990s-pickup-truck_wheel_rl",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        -0.934928119182587,
+        0.0,
+        -1.95022535324097
+      ],
+      "name": "1990s-pickup-truck_wheel_rr",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        -0.803903102874756,
+        1.10415804386139,
+        -0.466665506362915
+      ],
+      "name": "1990s-pickup-truck_windows",
+      "size": [
+        1.60780620574951,
+        0.638975262641907,
+        1.54836750030518
+      ]
+    }
+  ],
+  "triangles": 18384,
+  "file": "godot/assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck.glb",
+  "family": "pickup",
+  "source": "Grab3D",
+  "kit": "Cozy Retro Cars",
+  "page_url": "https://grab3d.com/models/vehicles/1990s-pickup-truck/",
+  "download_url": "https://grab3d.com/dl/1990s-pickup-truck/1990s-pickup-truck.glb",
+  "download_date": "2026-11-23",
+  "sha256": "6717acf895b3f47657eb92962c452ebe8ad08f066d7849c32cc6a506ed68ee79",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "runtime": "Unchanged complete source; bake node transforms and merge equivalent materials; source +Z forward. Uniform min(sim length/source length,sim width/source width); stable salted NPC identity chooses primary/retro. Keep source textures, trim, glass, wheels; paint hue mask and measured native lens emission plus source-contact reverse/indicator overlays.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.4402251529693597,
+    "rear_max_z": -2.26022515296936,
+    "front_y_range": [
+      0.7,
+      0.95
+    ],
+    "rear_y_range": [
+      0.65,
+      1.04
+    ],
+    "white_front_lenses": true
+  },
+  "source_textures": [
+    {
+      "name": "1990s-pickup-truck_body_normal",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_body_basecolor",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_body_metallic-1990s-pickup-truck_body_roughness",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_tire_normal",
+      "pixels": [
+        64,
+        256
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_tire_color",
+      "pixels": [
+        64,
+        256
+      ]
+    }
+  ],
+  "source_forward_axis": "+Z",
+  "source_ground_y_m": 0,
+  "lighter_variant": "none offered (source manifest triangles_light=null)",
+  "source_material_factors": [
+    {
+      "name": "1990s-pickup-truck_body_pbr",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x.001",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x.001",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x.001",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x.001",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x.002",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x.002",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x.002",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x.002",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_tire_x.003",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_rim_x.003",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_hubcap_x.003",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_trim_charcoal_x.003",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-pickup-truck_window_glass_x",
+      "base_color_linear_rgba": [
+        0.520995557308197,
+        0.7681511640548706,
+        0.8549926280975342,
+        0.41999998688697815
+      ]
+    }
+  ],
+  "lamp_adaptation": "Use source yellow or white headlamp and red tail lens texels only inside measured source-space height/depth bands; existing live bits control native lens emission. Reverse/indicators retain existing source-triangle-contact overlays; full body/attachment heading, pitch, roll and road elevation applied."
+}

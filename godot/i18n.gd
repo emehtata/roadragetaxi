@@ -4,6 +4,7 @@ const LANGUAGES := ["en", "fi", "de"]
 const LANGUAGE_NAMES := {"en": "English", "fi": "Suomi", "de": "Deutsch"}
 ## UI text by key: Finnish and English.
 const FI := {
+	"credits_cozy_retro_cars": "Retroautot: Grab3D Cozy Retro Cars Kit: 1980s Sedan, Hatchback, Station Wagon; 1990s Compact Car, Sports Car, SUV, Pickup Truck, Delivery Van. CC0 1.0: https://grab3d.com/kits/cozy-retro-cars/",
 	"credits_cozy_nature": "Luonto: Grab3D Cozy Nature Kit (Spruce Tree, Pine Tree, Birch Tree, Bush). CC0 1.0: https://grab3d.com/kits/cozy-nature/",
 	"credits_cozy_cars": "Autot: Grab3D Cozy Cars Kit (Electric Car, Compact Car, Rally Car, Station Wagon, Coupe, Off-Road 4x4, Vintage Truck). CC0 1.0: https://grab3d.com/kits/cozy-cars/",
 	"credits_travel_trailer": "Matkailuvaunu: Travel Trailer — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/travel-trailer/",
@@ -278,6 +279,7 @@ const FI := {
 }
 
 const EN := {
+	"credits_cozy_retro_cars": "Retro cars: Grab3D Cozy Retro Cars Kit: 1980s Sedan, Hatchback, Station Wagon; 1990s Compact Car, Sports Car, SUV, Pickup Truck, Delivery Van. CC0 1.0: https://grab3d.com/kits/cozy-retro-cars/",
 	"credits_cozy_nature": "Nature: Grab3D Cozy Nature Kit (Spruce Tree, Pine Tree, Birch Tree, Bush). CC0 1.0: https://grab3d.com/kits/cozy-nature/",
 	"credits_cozy_cars": "Cars: Grab3D Cozy Cars Kit (Electric Car, Compact Car, Rally Car, Station Wagon, Coupe, Off-Road 4x4, Vintage Truck). CC0 1.0: https://grab3d.com/kits/cozy-cars/",
 	"credits_travel_trailer": "Travel trailer: Travel Trailer — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/travel-trailer/",
@@ -555,6 +557,7 @@ const EN := {
 }
 
 const DE := {
+	"credits_cozy_retro_cars": "Retroautos: Grab3D Cozy Retro Cars Kit: 1980s Sedan, Hatchback, Station Wagon; 1990s Compact Car, Sports Car, SUV, Pickup Truck, Delivery Van. CC0 1.0: https://grab3d.com/kits/cozy-retro-cars/",
 	"credits_cozy_nature": "Natur: Grab3D Cozy Nature Kit (Spruce Tree, Pine Tree, Birch Tree, Bush). CC0 1.0: https://grab3d.com/kits/cozy-nature/",
 	"credits_cozy_cars": "Autos: Grab3D Cozy Cars Kit (Electric Car, Compact Car, Rally Car, Station Wagon, Coupe, Off-Road 4x4, Vintage Truck). CC0 1.0: https://grab3d.com/kits/cozy-cars/",
 	"credits_travel_trailer": "Wohnwagen: Travel Trailer — Grab3D. CC0 1.0 (public domain): https://grab3d.com/models/vehicles/travel-trailer/",

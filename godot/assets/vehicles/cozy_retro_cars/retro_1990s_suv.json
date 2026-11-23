@@ -1,0 +1,487 @@
+{
+  "source_bounds_min_xyz_m": [
+    -0.97327047586441,
+    0.0,
+    -2.34521722793579
+  ],
+  "source_dimensions_xyz_m": [
+    1.94654107093811,
+    1.90840065479279,
+    4.69043445587158
+  ],
+  "source_materials": [
+    {
+      "name": "1990s-suv_body_pbr",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_suv_1990s-suv_body_basecolor.jpg"
+    },
+    {
+      "name": "1990s-suv_tire_x",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_suv_1990s-suv_tire_color.jpg"
+    },
+    {
+      "name": "1990s-suv_rim_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_hubcap_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_paint_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_rubber_trim_x",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_suv_1990s-suv_tire_color.jpg"
+    },
+    {
+      "name": "1990s-suv_rim_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_suv_1990s-suv_tire_color.jpg"
+    },
+    {
+      "name": "1990s-suv_rim_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_suv_1990s-suv_tire_color.jpg"
+    },
+    {
+      "name": "1990s-suv_rim_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_tire_x.004",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1990s_suv_1990s-suv_tire_color.jpg"
+    },
+    {
+      "name": "1990s-suv_rim_x.004",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_hubcap_x.004",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.004",
+      "texture": ""
+    },
+    {
+      "name": "1990s-suv_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.97327047586441,
+        0.29718017578125,
+        -2.09567904472351
+      ],
+      "name": "1990s-suv_body",
+      "size": [
+        1.94654107093811,
+        1.61122047901154,
+        4.44089603424072
+      ]
+    },
+    {
+      "min": [
+        -0.370000183582306,
+        0.679999947547913,
+        -2.34521722793579
+      ],
+      "name": "1990s-suv_spare_tyre",
+      "size": [
+        0.740000009536743,
+        0.740000009536743,
+        0.534999966621399
+      ]
+    },
+    {
+      "min": [
+        0.645071804523468,
+        0.0,
+        1.04478275775909
+      ],
+      "name": "1990s-suv_wheel_fl",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        -0.894928157329559,
+        0.0,
+        1.04478275775909
+      ],
+      "name": "1990s-suv_wheel_fr",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        0.645071923732758,
+        0.0,
+        -1.55521714687347
+      ],
+      "name": "1990s-suv_wheel_rl",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        -0.89492803812027,
+        0.0,
+        -1.55521714687347
+      ],
+      "name": "1990s-suv_wheel_rr",
+      "size": [
+        0.249856114387512,
+        0.740000009536743,
+        0.740000009536743
+      ]
+    },
+    {
+      "min": [
+        -0.759166181087494,
+        1.07445538043976,
+        -1.76279485225677
+      ],
+      "name": "1990s-suv_windows",
+      "size": [
+        1.51833295822144,
+        0.587805390357971,
+        2.73678278923035
+      ]
+    }
+  ],
+  "triangles": 19885,
+  "file": "godot/assets/vehicles/cozy_retro_cars/retro_1990s_suv.glb",
+  "family": "suv",
+  "source": "Grab3D",
+  "kit": "Cozy Retro Cars",
+  "page_url": "https://grab3d.com/models/vehicles/1990s-suv/",
+  "download_url": "https://grab3d.com/dl/1990s-suv/1990s-suv.glb",
+  "download_date": "2026-11-23",
+  "sha256": "6de5880316e6d27e40f3294428b16a31251af6d59af2d20d7884cbb23414da99",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "runtime": "Unchanged complete source; bake node transforms and merge equivalent materials; source +Z forward. Uniform min(sim length/source length,sim width/source width); stable salted NPC identity chooses primary/retro. Keep source textures, trim, glass, wheels; paint hue mask and measured native lens emission plus source-contact reverse/indicator overlays.",
+  "lamp_regions_source_m": {
+    "front_min_z": 2.12521722793579,
+    "rear_max_z": -1.9452172279357902,
+    "front_y_range": [
+      0.65,
+      0.87
+    ],
+    "rear_y_range": [
+      0.71,
+      0.97
+    ],
+    "white_front_lenses": true
+  },
+  "source_textures": [
+    {
+      "name": "1990s-suv_body_normal",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-suv_body_basecolor",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-suv_body_metallic-1990s-suv_body_roughness",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_normal",
+      "pixels": [
+        64,
+        256
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_color",
+      "pixels": [
+        64,
+        256
+      ]
+    }
+  ],
+  "source_forward_axis": "+Z",
+  "source_ground_y_m": 0,
+  "lighter_variant": "none offered (source manifest triangles_light=null)",
+  "source_material_factors": [
+    {
+      "name": "1990s-suv_body_pbr",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_x",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_rim_x",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_hubcap_x",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_paint_x",
+      "base_color_linear_rgba": [
+        0.3967552185058594,
+        0.5520114302635193,
+        0.32314321398735046,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_rubber_trim_x",
+      "base_color_linear_rgba": [
+        0.06847816705703735,
+        0.07818742096424103,
+        0.10224173218011856,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_x.001",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_rim_x.001",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_hubcap_x.001",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.001",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_x.002",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_rim_x.002",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_hubcap_x.002",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.002",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_x.003",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_rim_x.003",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_hubcap_x.003",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.003",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_tire_x.004",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_rim_x.004",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_hubcap_x.004",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_trim_charcoal_x.004",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1990s-suv_window_glass_x",
+      "base_color_linear_rgba": [
+        0.520995557308197,
+        0.7681511640548706,
+        0.8549926280975342,
+        0.41999998688697815
+      ]
+    }
+  ],
+  "lamp_adaptation": "Use source yellow or white headlamp and red tail lens texels only inside measured source-space height/depth bands; existing live bits control native lens emission. Reverse/indicators retain existing source-triangle-contact overlays; full body/attachment heading, pitch, roll and road elevation applied."
+}

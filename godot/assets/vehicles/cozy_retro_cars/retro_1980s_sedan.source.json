@@ -1,0 +1,47 @@
+{
+ "slug": "1980s-sedan",
+ "triangles": 17287,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "1980s-sedan.glb",
+   "bytes": 1100680
+  },
+  "blend": {
+   "name": "1980s-sedan.blend",
+   "bytes": 974237
+  },
+  "fbx": {
+   "name": "1980s-sedan.fbx",
+   "bytes": 2016764
+  },
+  "obj": {
+   "name": "1980s-sedan-obj.zip",
+   "bytes": 994751
+  },
+  "usdz": {
+   "name": "1980s-sedan.usdz",
+   "bytes": 1740954
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.786 x 4.599 x 1.410",
+  "triangles": 17287,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "1980s four-door sedan, approx. 4.6 x 1.8 x 1.41 m (L x W x H incl. mirrors), wheel diameter 0.60 m",
+  "notes": "front faces -Y; generic boxy 1980s notchback sedan with flat rectangular headlights and black plastic bumpers; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, seats, rear bench and steering wheel; no brand, no logo, no text",
+  "set": "Cozy Retro Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}
