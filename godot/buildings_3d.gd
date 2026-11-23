@@ -543,7 +543,7 @@ const MODEL_SCENES := {
 	"motorcycle": preload("res://assets/vehicles/motorcycle.glb"),
 	"city_bus": preload("res://assets/vehicles/city_bus.glb"),
 	"camper_van": preload("res://assets/vehicles/camper_van.glb"),
-	"tractor": preload("res://assets/vehicles/tractor.glb"),
+	"tractor": preload("res://assets/vehicles/cozy_vehicles/tractor.glb"),
 	"caravan": preload("res://assets/vehicles/caravan.glb"),
 	"e_scooter": preload("res://assets/vehicles/e_scooter.glb"),
 	"e_scooter_grab3d": preload("res://assets/vehicles/e_scooter_grab3d.glb"),
@@ -568,13 +568,13 @@ const MODEL_SIZE := {  # [width, length] in the source scenes, metres
 	"box_truck": Vector2(2.652, 7.542), "motorcycle": Vector2(0.58, 2.106),
 	"city_bus": Vector2(3.084, 12.198),
 	"camper_van": Vector2(2.154, 5.042),
-	"tractor": Vector2(2.33, 3.665), "caravan": Vector2(2.647, 5.365),
+	"tractor": Vector2(2.3820883, 4.7249999), "caravan": Vector2(2.647, 5.365),
 	"e_scooter": Vector2(0.482, 0.844), "e_scooter_grab3d": Vector2(0.52, 1.247),
 	"bicycle": Vector2(0.617, 1.87), "mountain_bike": Vector2(0.78, 1.885),
 	"train_locomotive": Vector2(3.03, 16.25), "train_coach": Vector2(2.89, 26.4),
 }
 ## Height scaled with the length: stretched over 15 % in length alone, their wheels would turn oval.
-const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van"]
+const UNIFORM_SCALE_MODELS := ["e_scooter", "camper_van", "tractor"]
 ## Source and rendered height (m) overriding the length factor: the scooter's bar at a standing rider's hands.
 const MODEL_HEIGHT := {"e_scooter": [0.970, 1.2]}
 ## Rendered width (m) replacing the sim width, only for models whose source width is over 15 % off the
@@ -945,7 +945,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 					continue
 				if COZY_CARS.has(kind) and original.resource_name.ends_with("_pbr"):
 					mesh.set_surface_override_material(surface, cozy_car_material(original,kind))
-				elif original.resource_name.begins_with("paint") or (COZY_CARS.has(kind) and original.resource_name.ends_with("_paint_x")) or (kind == "tractor" and original.resource_name == "orange") or \
+				elif original.resource_name.begins_with("paint") or (COZY_CARS.has(kind) and (original.resource_name.ends_with("_paint_x") or original.resource_name.begins_with("tractor_paint_sage_x"))) or (kind == "tractor" and original.resource_name == "orange") or \
 					(kind == "caravan" and original.resource_name == "shell") or (kind == "e_scooter" and original.resource_name == "teal") or \
 					(kind == "train_locomotive" and original.resource_name == "Original teal enamel paint") or \
 					(kind == "train_coach" and original.resource_name == "Original warm white outdoor paint"):
@@ -993,6 +993,7 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 
 
 const COZY_CARS := {
+	"tractor": {"size":Vector2(2.3820883,4.7249999),"height":3.028301,"paint":Color8(170,194,153),"front":Vector2(1.25,1.50),"lamp_z":Vector2(2.0,-1.9),"rear":Vector2(1.35,1.55),"white_lamps":true},
 	"retro_1990s_delivery_van": {"size":Vector2(2.07380581,4.86528206),"height":2.11000061,"paint":Color8(184,162,237),"front":Vector2(0.68,0.86),"lamp_z":Vector2(2.213,-2.033),"rear":Vector2(0.57,1.02),"white_lamps":true},
 	"retro_1990s_pickup_truck": {"size":Vector2(2.02654123,5.32045031),"height":1.90000081,"paint":Color8(156,200,239),"front":Vector2(0.70,0.95),"lamp_z":Vector2(2.440,-2.260),"rear":Vector2(0.65,1.04),"white_lamps":true},
 	"retro_1990s_suv": {"size":Vector2(1.94654107,4.69043446),"height":1.90840065,"paint":Color8(169,196,155),"front":Vector2(0.65,0.87),"lamp_z":Vector2(2.125,-1.945),"rear":Vector2(0.71,0.97),"white_lamps":true},
@@ -1154,6 +1155,16 @@ static func model_car_details(length: float, width: float, sign: int, lamps: int
 ## A GLB vehicle's live lamps and rider (vehicle()); bikes and e-scooters get one front and one rear lamp.
 static func model_vehicle_details(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary, model_kind := "") -> Dictionary:
 	if model_kind.is_empty(): model_kind = kind
+	if kind == "tractor":
+		var details := _empty_arrays()
+		var scale := model_scale("tractor",length,width).x
+		for side:float in [-1.0,1.0]:
+			_model_lens(details,"tractor",length,width,AABB(Vector3(side*.85-.04,1.42,-2.05),Vector3(.08,.08,.03)),lamps & LAMPS_REVERSE != 0,Color.WHITE,Color8(170,170,165))
+			for front:bool in [false,true]:
+				_model_lens(details,"tractor",length,width,AABB(Vector3(side*(.95 if not front else .36)-.025,1.42,-2.045 if not front else 2.12),Vector3(.05,.08,.03)),lamps & (LAMPS_LEFT if side>0 else LAMPS_RIGHT) != 0,Color(1,.6,.05),Color8(150,105,40))
+		if extra.get("plough",false):
+			_plough_details(details,length,width,extra.get("beacon",false),2.86*scale)
+		return details
 	var bike := kind in ["bicycle", "e_scooter"]
 	var out := _empty_arrays() if kind == "motorcycle" else model_car_details(length, width, 0, lamps, 0.8,
 		bike or kind in ["truck", "motorcycle", "camper_van"], 1.41, bike)
@@ -1298,7 +1309,7 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation)
 		return
 	var model_kind := vehicle_model_kind(kind, id)
-	if opaque and has_model(kind) and (kind != "tractor" or not extra.get("plough", false)):
+	if opaque and has_model(kind):
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [model_kind, length, width, lamps, str(extra)]
 		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra, model_kind), at, heading, elevation)
@@ -1352,6 +1363,18 @@ static func rider_leg_joints(x0: float, x1: float, hip: float, deck: float) -> A
 	return legs
 
 
+## Shared working blade; the beacon sits on the selected body roof.
+static func _plough_details(out:Dictionary,length:float,width:float,beacon:bool,roof:float)->void:
+	var hl:=length*.5
+	var hw:=width*.5
+	for i in 6:
+		var y0:=-hw*1.2+hw*2.4*i/6.0
+		var x0:=hl*1.02+.28*(1.0-float(i)/6.0)
+		_car_box(out,x0,x0+.12,y0,y0+hw*.4,.05,.9,Color8(240,150,20))
+	_part(out,LAMP if beacon else PAINT,-hl*.58,-hl*.42,-.12,.12,roof,roof+.20,
+		Color(1,.6,.05) if beacon else Color8(150,105,40))
+
+
 static func vehicle_arrays(kind: String, length: float, width: float, color: Color, lamps: int, extra: Dictionary) -> Dictionary:
 	var out := _empty_arrays()
 	var hl := length * 0.5
@@ -1387,13 +1410,8 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			_car_box(out, -hl * 0.95, -hl * 0.05, -hw * 0.58, hw * 0.58, 0.9, 1.5, color)
 			_part(out, GLASS_PART, -hl * 0.9, -hl * 0.1, -hw * 0.54, hw * 0.54, 1.5, 2.6, CAR_GLASS)
 			_car_box(out, -hl * 0.95, -hl * 0.05, -hw * 0.6, hw * 0.6, 2.6, 2.75, color)
-			if extra.get("plough", false):  # an angled blade ahead, wider than the tractor
-				for i in 6:
-					var y0 := -hw * 1.2 + hw * 2.4 * i / 6.0
-					var x0 := hl * 1.02 + 0.28 * (1.0 - float(i) / 6.0)
-					_car_box(out, x0, x0 + 0.12, y0, y0 + hw * 0.4, 0.05, 0.9, Color8(240, 150, 20))
-				_part(out, LAMP if extra.get("beacon", false) else PAINT, -hl * 0.58, -hl * 0.42, -0.12, 0.12, 2.75, 2.95,
-					Color(1.0, 0.6, 0.05) if extra.get("beacon", false) else Color8(150, 105, 40))
+			if extra.get("plough", false):
+				_plough_details(out,length,width,extra.get("beacon",false),2.75)
 			_car_lamps(out, hl, hw * 0.6, lamps)
 		"camper_van":
 			var box := Color8(238, 234, 220)
