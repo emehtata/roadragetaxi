@@ -5251,7 +5251,7 @@ func test_bus_model_radius_matches_car() -> void:
 
 func test_vehicle_models_at_distance() -> void:
 	var cases := [["bus", "city_bus", {}], ["truck", "box_truck", {}], ["motorcycle", "motorcycle", {}],
-		["camper_van", "camper_van", {}], ["tractor", "tractor", {}], ["trailer", "caravan", {}],
+		["camper_van", "camper_van", {}], ["tractor", "tractor", {}], ["tractor", "tractor", {"plough":true}], ["trailer", "caravan", {}],
 		["e_scooter", B3.model_variant("e_scooter", 0), {"id": 0}], ["bicycle", B3.model_variant("bicycle", 0), {"id": 0}],
 		["train", "train_locomotive", {"profile": "locomotive"}], ["train", "train_coach", {"profile": "standard"}]]
 	for row: Array in cases:
@@ -5263,7 +5263,7 @@ func test_vehicle_models_at_distance() -> void:
 
 
 func test_unmodelled_kinds_stay_procedural() -> void:
-	for row: Array in [["tram", {"profile": "tram"}], ["tractor", {"plough": true}]]:
+	for row: Array in [["tram", {"profile": "tram"}]]:
 		var r: Node2D = _model_frame(func(b: Node2D) -> void:
 			b.vehicle(row[0], Vector2(10.0, 0.0), 0.0, 9.0, 2.4, Color.BLUE, 0, 0.0, row[1]))
 		check(_models_used(r) == 0 and _procedural_bodies(r) == 1, "%s %s stays procedural" % row)

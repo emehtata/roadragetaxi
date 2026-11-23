@@ -3,6 +3,22 @@
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
     {
+      "name": "Grab3D Cozy Vehicles Tractor (CC0)",
+      "paths": [
+        "godot/assets/vehicles/cozy_vehicles/**"
+      ],
+      "purpose": "Ordinary and plough tractor body in shaded 3D",
+      "shipped": true,
+      "origin": "https://grab3d.com/models/vehicles/tractor/; source/hash in tractor.json",
+      "copyright": "not named on source page",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "Original manifests/notices and full CC0 legal text alongside asset",
+      "obligations": "none (CC0); project preserves provenance and fi/en/de displayed credits",
+      "commercial": "yes",
+      "status": "verified",
+      "remediation": ""
+    },
+    {
       "name": "Grab3D Cozy Retro Cars variants (CC0)",
       "paths": [
         "godot/assets/vehicles/cozy_retro_cars/**"

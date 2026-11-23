@@ -1,0 +1,39 @@
+{
+  "model": "Tractor",
+  "source_url": "https://grab3d.com/models/vehicles/tractor/",
+  "kit_url": "https://grab3d.com/kits/cozy-vehicles/",
+  "download_url": "https://grab3d.com/dl/tractor/tractor.glb",
+  "retrieved": "2026-11-23",
+  "sha256": "67eefa2748276d0554373691b4002239c66823ed84fae256793173b307d05d6f",
+  "triangles": 32784,
+  "surfaces": 5,
+  "source_dimensions_xyz_m": [
+    2.3820883,
+    3.028301,
+    4.7249999
+  ],
+  "bounds_min_xyz_m": [
+    -1.1910442,
+    0,
+    -2.3625
+  ],
+  "parts": [
+    "body",
+    "wheel_fl",
+    "wheel_fr",
+    "wheel_rl",
+    "wheel_rr",
+    "windows"
+  ],
+  "source_forward": "+Z imported GLB",
+  "transform": "Complete authored source; +90deg Y to travel +X; uniform min(length/4.725,width/2.3820883), ground Y0",
+  "roof_beacon_source_y_m": 2.86,
+  "materials": [
+    "tractor_body_pbr",
+    "tractor_tire_x",
+    "tractor_trim_cream_x",
+    "tractor_paint_sage_x",
+    "tractor_window_glass_x"
+  ],
+  "selection": "Mapped ordinary and plough tractors; complete source retained. Equivalent wheel materials merged. No Light variant offered."
+}

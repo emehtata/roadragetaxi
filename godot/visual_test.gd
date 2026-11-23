@@ -214,6 +214,7 @@ func _lineup_train(name: String, look: String, lengths: Array, width: float, y: 
 func _nature_profile_state(message: Dictionary) -> void:
 	# A render-only benchmark: variable traffic must not change the compared actor population.
 	var state: Dictionary = message.get("state", {})
+	if scenario.get("id","")=="cozy_vehicles_profile":state.get("weather",{})["wind_vector_mps"]=[0.0,0.0]
 	for collection: String in ["npcs", "pedestrians", "trains", "protests", "brawls"]:
 		state[collection] = []
 
@@ -235,6 +236,11 @@ func _ready() -> void:
 		main.entities.extra_trains = [_lineup_train("train coach", coach[0], [coach[1]], coach[2], coach[1] * 0.5, LINEUP_LANE_M + 0.5)]
 	elif scenario.get("lineup", false):
 		main.entities.extra_npcs = _lineup()
+	if scenario.has("cozy_tractor"):
+		main.entities.extra_npcs=[]
+		for i in 2:
+			var at:=_on_road(-3.0+i*7.0,3.5)
+			main.entities.extra_npcs.append({"id":"cozy_tractor_"+str(i),"x":at.x,"y":at.y,"heading":scenario.pose[2],"length_m":4.0,"width_m":2.2,"color":[180,130+i*40,65],"vehicle_type":"tractor","state":"DRIVING" if scenario.get("tractor_lamps",false) else "PARKED","speed":0.0,"is_taxi":false,"braking":scenario.get("tractor_lamps",false),"turn_signal":"hazard" if scenario.get("tractor_lamps",false) else "","turn_signal_elapsed":0.0})
 	if scenario.get("cozy_fleet",false) or scenario.get("retro_profile",false):
 		main.entities.extra_npcs=[]
 		var kinds:Array=scenario.get("retro_families",["saloon","city_car","hatchback","estate","suv","pickup","sports"])
@@ -660,6 +666,18 @@ func check() -> Array:
 		return ["no state from the server yet"]
 	var missing := _hud_readiness() if scenario.has("hud_fixture") else []
 	if scenario.get("nature_profile",false) and _elapsed<30.0: missing.append("mapped-tree profile warmup")
+	if scenario.get("id","")=="cozy_vehicles_profile" and _elapsed>=30.0:
+		var expected_forest:=0
+		for chunk in main.map_layer._chunks.values():
+			expected_forest+=chunk._forest_rows.size()
+			if not chunk._forest_rows.is_empty() and not chunk.has_meta("tractor_profile_prepared"):
+				chunk.set_meta("tractor_profile_prepared",true)
+				chunk._forest_look=[]
+				chunk._trees_3d()
+			if chunk._forest_task>=0 or chunk._lamp_task>=0:missing.append("tractor profile nature/lamp batches pending")
+		var actual_forest:=int(_forest_stats().trees_loaded)
+		if actual_forest!=expected_forest:missing.append("tractor profile forest population %d != %d"%[actual_forest,expected_forest])
+
 	if scenario.get("snow_visibility", false):
 		missing.append_array(_snow_readiness())
 	var pose: Array = scenario["pose"]
@@ -1499,6 +1517,41 @@ func _check_map(centre: Vector2) -> Array:
 			if not found:missing.append("Cozy fleet production model absent "+kind)
 		if fleet.size()!=scenario.get("retro_families",[0,1,2,3,4,5,6]).size():missing.append("Cozy fleet needs all requested source models")
 		cozy_fleet_result=fleet
+	var tractor_result:=[]
+	if scenario.has("cozy_tractor"):
+		var layer=layer_3d_view()
+		for target:Dictionary in main.entities.extra_npcs:
+			var local:=MapMath.point(main.entities.origin,float(target.x),float(target.y));var found:=false
+			for node:Node3D in ([] if layer==null else layer._model_nodes.get("tractor",[])):
+				if not node.visible or Vector2(node.position.x,node.position.z).distance_to(local)>.1:continue
+				found=true;var mesh:MeshInstance3D=node.get_child(0);var triangles:=0
+				for surface in mesh.mesh.get_surface_count():triangles+=mesh.mesh.surface_get_array_index_len(surface)/3
+				if triangles!=32784:missing.append("tractor source geometry missing")
+				if node.basis.z.normalized().dot(Vector3(cos(float(target.heading)),0,-sin(float(target.heading))))<.99:missing.append("tractor heading differs")
+				var rect:=Rect2()
+				for corner in 8:
+					var point:Vector3=mesh.global_transform*mesh.get_aabb().get_endpoint(corner)
+					if not camera_3d.is_position_in_frustum(point):missing.append("tractor outside frustum")
+					var pixel:=camera_3d.unproject_position(point);rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+				if minf(rect.size.x,rect.size.y)<35:missing.append("tractor too small")
+				for panel:Rect2 in hud:
+					if panel.intersects(rect):missing.append("tractor under HUD")
+				var ground_error:=absf(node.position.y-main.map_layer.deck_height(local,0)-Buildings3D.ROAD_M-.016)
+				if ground_error>.03:missing.append("tractor not grounded")
+				var bits:int=27 if scenario.get("tractor_lamps",false) else 0
+				if mesh.get_instance_shader_parameter("lamp_bits")!=bits:missing.append("tractor lamp state differs")
+				var attachments:=false;var blade_vertices:=0
+				for detail:MeshInstance3D in layer._car_nodes.slice(0,layer._cars_used).reduce(func(a,row): a.append_array(row);return a,[]):
+					if detail.visible and Vector2(detail.position.x,detail.position.z).distance_to(local)<.1:
+						attachments=true
+						for surface in detail.mesh.get_surface_count():
+							for vertex:Vector3 in detail.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX]:
+								if vertex.x>2.04:blade_vertices+=1
+				if not attachments:missing.append("tractor details absent")
+				if bool(scenario.cozy_tractor)!=(blade_vertices>=6*36):missing.append("tractor working blade differs")
+				tractor_result.append({"id":target.id,"triangles":triangles,"surfaces":mesh.mesh.get_surface_count(),"ground_error_m":ground_error,"lamps":bits,"plough":scenario.cozy_tractor,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y]})
+			if not found:missing.append("tractor source not visible")
+		if tractor_result.size()!=2:missing.append("tractor fixture count differs")
 	var retro_profile_result:=[]
 	if scenario.get("retro_profile",false):
 		var models:=[];var layer=layer_3d_view()
@@ -1606,6 +1659,7 @@ func _check_map(centre: Vector2) -> Array:
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
 	if not cozy_fleet_result.is_empty(): _counts["cozy_cars_fleet"]=cozy_fleet_result
+	if not tractor_result.is_empty(): _counts["cozy_tractor"]=tractor_result
 	if not retro_profile_result.is_empty(): _counts["retro_profile_models"]=retro_profile_result
 	if not windscreen.is_empty():
 		_counts["coach_vent" if scenario.get("coach_roof_vent", false) else "city_bus" if scenario.get("city_bus_orientation", false) else "two_wheeler" if scenario.has("two_wheeler_model") else "windscreen"] = windscreen
