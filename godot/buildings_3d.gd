@@ -523,6 +523,14 @@ const LAMPS_REVERSE := 4
 const LAMPS_LEFT := 8  # an indicator, blinking on now
 const LAMPS_RIGHT := 16
 const MODEL_SCENES := {
+	"retro_1980s_sedan": preload("res://assets/vehicles/cozy_retro_cars/retro_1980s_sedan.glb"),
+	"retro_1990s_compact_car": preload("res://assets/vehicles/cozy_retro_cars/retro_1990s_compact_car.glb"),
+	"retro_1980s_hatchback": preload("res://assets/vehicles/cozy_retro_cars/retro_1980s_hatchback.glb"),
+	"retro_1980s_station_wagon": preload("res://assets/vehicles/cozy_retro_cars/retro_1980s_station_wagon.glb"),
+	"retro_1990s_sports_car": preload("res://assets/vehicles/cozy_retro_cars/retro_1990s_sports_car.glb"),
+	"retro_1990s_suv": preload("res://assets/vehicles/cozy_retro_cars/retro_1990s_suv.glb"),
+	"retro_1990s_pickup_truck": preload("res://assets/vehicles/cozy_retro_cars/retro_1990s_pickup_truck.glb"),
+	"retro_1990s_delivery_van": preload("res://assets/vehicles/cozy_retro_cars/retro_1990s_delivery_van.glb"),
 	"saloon": preload("res://assets/vehicles/cozy_cars/electric_car.glb"),
 	"hatchback": preload("res://assets/vehicles/cozy_cars/rally_car.glb"),
 	"estate": preload("res://assets/props/station_wagon.glb"),
@@ -545,6 +553,14 @@ const MODEL_SCENES := {
 	"train_coach": preload("res://assets/vehicles/train_coach.glb"),
 }
 const MODEL_SIZE := {  # [width, length] in the source scenes, metres
+	"retro_1980s_sedan": Vector2(1.78563583,4.59899998),
+	"retro_1990s_compact_car": Vector2(1.77590358,3.72362709),
+	"retro_1980s_hatchback": Vector2(1.72563589,3.97264266),
+	"retro_1980s_station_wagon": Vector2(1.84563589,4.88264656),
+	"retro_1990s_sports_car": Vector2(1.87545097,4.41822481),
+	"retro_1990s_suv": Vector2(1.94654107,4.69043446),
+	"retro_1990s_pickup_truck": Vector2(2.02654123,5.32045031),
+	"retro_1990s_delivery_van": Vector2(2.07380581,4.86528206),
 	"saloon": Vector2(1.915451, 4.532474), "hatchback": Vector2(1.895904, 4.393400),
 	"estate": Vector2(1.895904, 4.663695), "suv": Vector2(2.145266, 4.959919),
 	"pickup": Vector2(1.980000, 5.444000), "sports": Vector2(1.814998, 4.697256),
@@ -569,7 +585,16 @@ const SCOOTER_RIDER_SEAT := 0.85
 const SCOOTER_DECK_Y := 0.12
 ## A kind's close-range models; each vehicle keeps one, picked from its id (docs/specs/vehicle-model-variants.md).
 ## bmx_bike (1.45 m long: stretched 24 % to the sim's 1.8 m) and tram (22.6 x 3.3 m vs 9.2 m sections, 2.4 m wide) stay out.
-const MODEL_VARIANTS := {"bicycle": ["bicycle", "mountain_bike"], "e_scooter": ["e_scooter", "e_scooter_grab3d"]}
+const MODEL_VARIANTS := {
+	"saloon": ["saloon", "retro_1980s_sedan"],
+	"city_car": ["city_car", "retro_1990s_compact_car"],
+	"hatchback": ["hatchback", "retro_1980s_hatchback"],
+	"estate": ["estate", "retro_1980s_station_wagon"],
+	"sports": ["sports", "retro_1990s_sports_car"],
+	"suv": ["suv", "retro_1990s_suv"],
+	"pickup": ["pickup", "retro_1990s_pickup_truck"],
+	"panel_van": ["panel_van", "retro_1990s_delivery_van"],
+	"bicycle": ["bicycle", "mountain_bike"], "e_scooter": ["e_scooter", "e_scooter_grab3d"]}
 
 
 static func model_variant(kind: String, id) -> String:
@@ -858,9 +883,11 @@ func puff(at: Vector2, height: float, radius: float, color: Color) -> void:
 ## A car at `at` (layer position) facing `heading` (as the 2D layer's):
 ## `shape` is entity_layer's CAR_SHAPES row; `sign` 0 none, 1 a taxi sign off, 2 lit;
 ## `lamps` the LAMPS_* lit now.
-func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0, tilt := Vector2.ZERO) -> void:
+func car(at: Vector2, heading: float, length: float, width: float, color: Color, shape: Array, sign: int, lamps := 0, elevation := 0.0, tilt := Vector2.ZERO, identity = null) -> void:
 	if opaque:
 		var kind := car_model_kind(shape, length)
+		if identity != null and sign == 0:  # Separate salt keeps model variety independent of body-style hash.
+			kind = model_variant(kind, "retro|" + str(identity))
 		place_model_car(kind, at, heading, length, width, color, elevation, lamps, tilt)
 		var detail_key := "d|%s|%.2f|%.2f|%d|%d" % [kind, length, width, sign, lamps]
 		place_body(detail_key, func() -> Dictionary: return cozy_car_details(kind,length,width,sign,lamps) if COZY_CARS.has(kind) else model_car_details(length, width, sign, lamps, 0.5, true,
@@ -966,6 +993,14 @@ func place_model_car(kind: String, at: Vector2, heading: float, length: float, w
 
 
 const COZY_CARS := {
+	"retro_1990s_delivery_van": {"size":Vector2(2.07380581,4.86528206),"height":2.11000061,"paint":Color8(184,162,237),"front":Vector2(0.68,0.86),"lamp_z":Vector2(2.213,-2.033),"rear":Vector2(0.57,1.02),"white_lamps":true},
+	"retro_1990s_pickup_truck": {"size":Vector2(2.02654123,5.32045031),"height":1.90000081,"paint":Color8(156,200,239),"front":Vector2(0.70,0.95),"lamp_z":Vector2(2.440,-2.260),"rear":Vector2(0.65,1.04),"white_lamps":true},
+	"retro_1990s_suv": {"size":Vector2(1.94654107,4.69043446),"height":1.90840065,"paint":Color8(169,196,155),"front":Vector2(0.65,0.87),"lamp_z":Vector2(2.125,-1.945),"rear":Vector2(0.71,0.97),"white_lamps":true},
+	"retro_1990s_sports_car": {"size":Vector2(1.87545097,4.41822481),"height":1.23000002,"paint":Color8(95,168,159),"front":Vector2(0.41,0.58),"lamp_z":Vector2(1.989,-1.809),"rear":Vector2(0.61,0.72),"white_lamps":true},
+	"retro_1980s_station_wagon": {"size":Vector2(1.84563589,4.88264656),"height":1.52999997,"paint":Color8(243,229,200),"front":Vector2(0.57,0.76),"lamp_z":Vector2(2.221,-2.041),"rear":Vector2(0.53,0.84),"white_lamps":false},
+	"retro_1980s_hatchback": {"size":Vector2(1.72563589,3.97264266),"height":1.44499993,"paint":Color8(184,162,237),"front":Vector2(0.54,0.70),"lamp_z":Vector2(1.766,-1.586),"rear":Vector2(0.56,0.77),"white_lamps":false},
+	"retro_1990s_compact_car": {"size":Vector2(1.77590358,3.72362709),"height":1.52999997,"paint":Color8(184,162,237),"front":Vector2(0.49,0.67),"lamp_z":Vector2(1.642,-1.462),"rear":Vector2(0.51,0.76),"white_lamps":true},
+	"retro_1980s_sedan": {"size":Vector2(1.78563583,4.59899998),"height":1.40999997,"paint":Color8(156,200,239),"front":Vector2(0.58,0.75),"lamp_z":Vector2(2.079,-1.899),"rear":Vector2(0.61,0.78),"white_lamps":false},
 	"saloon": {"size":Vector2(1.915451,4.532474),"height":1.450000,"paint":Color8(153,196,230),"front":Vector2(0.60,0.77),"lamp_z":Vector2(2.1,-2.18),"rear":Vector2(0.77,0.90)},
 	"city_car": {"size":Vector2(1.755451,3.724000),"height":1.482500,"paint":Color8(162,211,196),"front":Vector2(0.58,0.75),"lamp_z":Vector2(1.66,-1.74),"rear":Vector2(0.52,0.82)},
 	"hatchback": {"size":Vector2(1.895904,4.393400),"height":1.690000,"paint":Color8(153,196,230),"front":Vector2(0.58,0.83),"lamp_z":Vector2(2.03,-2.05),"rear":Vector2(0.73,0.93)},
@@ -1058,6 +1093,7 @@ static func cozy_car_material(original:StandardMaterial3D, kind:String)->ShaderM
 	material.set_shader_parameter("lamp_z",COZY_CARS[kind].lamp_z)
 	material.set_shader_parameter("front_lamp_height",COZY_CARS[kind].front)
 	material.set_shader_parameter("rear_lamp_height",COZY_CARS[kind].rear)
+	material.set_shader_parameter("white_front_lenses",COZY_CARS[kind].get("white_lamps",false))
 	_cozy_materials[original]=material
 	return material
 

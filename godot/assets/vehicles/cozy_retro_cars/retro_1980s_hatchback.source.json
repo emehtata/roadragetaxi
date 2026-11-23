@@ -1,0 +1,47 @@
+{
+ "slug": "1980s-hatchback",
+ "triangles": 15612,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "1980s-hatchback.glb",
+   "bytes": 1113672
+  },
+  "blend": {
+   "name": "1980s-hatchback.blend",
+   "bytes": 971740
+  },
+  "fbx": {
+   "name": "1980s-hatchback.fbx",
+   "bytes": 2019772
+  },
+  "obj": {
+   "name": "1980s-hatchback-obj.zip",
+   "bytes": 1040344
+  },
+  "usdz": {
+   "name": "1980s-hatchback.usdz",
+   "bytes": 1680432
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.726 x 3.973 x 1.445",
+  "triangles": 15612,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "1980s three-door hatchback, approx. 4.0 x 1.7 x 1.45 m (L x W x H incl. mirrors), wheel diameter 0.58 m",
+  "notes": "front faces -Y; generic boxy 1980s compact car with rectangular headlights and black plastic bumpers; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, seats, rear bench and steering wheel; no brand, no logo, no text",
+  "set": "Cozy Retro Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

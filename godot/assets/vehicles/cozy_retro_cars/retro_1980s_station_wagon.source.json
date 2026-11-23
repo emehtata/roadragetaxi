@@ -1,0 +1,47 @@
+{
+ "slug": "1980s-station-wagon",
+ "triangles": 19644,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "1980s-station-wagon.glb",
+   "bytes": 1330016
+  },
+  "blend": {
+   "name": "1980s-station-wagon.blend",
+   "bytes": 1244182
+  },
+  "fbx": {
+   "name": "1980s-station-wagon.fbx",
+   "bytes": 2481484
+  },
+  "obj": {
+   "name": "1980s-station-wagon-obj.zip",
+   "bytes": 1317243
+  },
+  "usdz": {
+   "name": "1980s-station-wagon.usdz",
+   "bytes": 2049114
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.846 x 4.883 x 1.530",
+  "triangles": 19644,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "1980s station wagon with wood-look side panels, approx. 4.9 x 1.85 x 1.53 m (L x W x H incl. roof rails and mirrors), wheel diameter 0.62 m",
+  "notes": "front faces -Y; generic 1980s estate car, wood-grain side panels are a material (no logo); 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, seats, rear bench and steering wheel; no brand, no logo, no text",
+  "set": "Cozy Retro Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

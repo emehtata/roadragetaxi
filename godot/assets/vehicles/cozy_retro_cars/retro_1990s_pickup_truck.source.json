@@ -1,0 +1,47 @@
+{
+ "slug": "1990s-pickup-truck",
+ "triangles": 18384,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "1990s-pickup-truck.glb",
+   "bytes": 1356868
+  },
+  "blend": {
+   "name": "1990s-pickup-truck.blend",
+   "bytes": 1210901
+  },
+  "fbx": {
+   "name": "1990s-pickup-truck.fbx",
+   "bytes": 2433580
+  },
+  "obj": {
+   "name": "1990s-pickup-truck-obj.zip",
+   "bytes": 1346631
+  },
+  "usdz": {
+   "name": "1990s-pickup-truck.usdz",
+   "bytes": 2122127
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "2.027 x 5.320 x 1.900",
+  "triangles": 18384,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "1990s regular-cab pickup truck, approx. 5.3 x 2.0 x 1.9 m (L x W x H), wheel diameter 0.74 m",
+  "notes": "generic, brand-free 1990s pickup with rounded cab, open cargo bed with dark bed liner and rail caps, body-colour front bumper, chrome rear step bumper, grey side cladding and arch flares, clear-glass headlights; front faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cab with transparent windows, bench seat and steering wheel; blank number plates, no brand, no text",
+  "set": "Cozy Retro Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

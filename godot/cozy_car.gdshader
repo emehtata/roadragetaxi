@@ -5,6 +5,7 @@ uniform sampler2D metallic_roughness : filter_linear_mipmap, repeat_enable;
 uniform sampler2D normal_texture : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform vec3 source_paint : source_color;
 uniform vec2 lamp_z;
+uniform bool white_front_lenses = false;
 uniform vec2 front_lamp_height;
 uniform vec2 rear_lamp_height;
 instance uniform vec4 body_paint : source_color = vec4(1.0);
@@ -27,7 +28,8 @@ void fragment() {
 	vec3 srgb = pow(max(tex,vec3(0.0)),vec3(1.0/2.2));
 	bool yellow_lens = srgb.r > srgb.b * 1.7 && srgb.g > srgb.b * 1.45 && srgb.r > 0.5;
 	bool red_lens = srgb.r > srgb.g * 1.8 && srgb.r > srgb.b * 1.7 && srgb.r > 0.4;
-	if ((front && yellow_lens) || (rear && red_lens)) ALBEDO = tex;
-	if (front && yellow_lens && (lamp_bits & 1) != 0) EMISSION = vec3(1.0, 0.94, 0.75) * 2.0;
+	bool front_lens = yellow_lens || (white_front_lenses && min(srgb.r,min(srgb.g,srgb.b)) > 0.68 && max(srgb.r,max(srgb.g,srgb.b)) - min(srgb.r,min(srgb.g,srgb.b)) < 0.18);
+	if ((front && front_lens) || (rear && red_lens)) ALBEDO = tex;
+	if (front && front_lens && (lamp_bits & 1) != 0) EMISSION = vec3(1.0, 0.94, 0.75) * 2.0;
 	if (rear && red_lens && (lamp_bits & 3) != 0) EMISSION = vec3(1.0, 0.03, 0.01) * (((lamp_bits & 2) != 0) ? 3.0 : 0.7);
 }

@@ -1036,7 +1036,7 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 						func(p: Vector2) -> float: return float(deck_height.call(p, _layer))), 0.25)
 					_tilts[id] = tilt
 				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
-					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0, tilt)
+					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0, tilt, null if is_taxi else vehicle_id)
 				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
 					return
 				if is_taxi and lit:

@@ -1,0 +1,396 @@
+{
+  "source_bounds_min_xyz_m": [
+    -0.862817883491516,
+    0.0,
+    -1.9863213300705
+  ],
+  "source_dimensions_xyz_m": [
+    1.72563588619232,
+    1.4449999332428,
+    3.97264266014099
+  ],
+  "source_materials": [
+    {
+      "name": "1980s-hatchback_body_pbr",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1980s_hatchback_1980s-hatchback_body_basecolor.jpg"
+    },
+    {
+      "name": "1980s-hatchback_tire_x",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1980s_hatchback_1980s-hatchback_tire_color.jpg"
+    },
+    {
+      "name": "1980s-hatchback_rim_x",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_tire_x.001",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1980s_hatchback_1980s-hatchback_tire_color.jpg"
+    },
+    {
+      "name": "1980s-hatchback_rim_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x.001",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_tire_x.002",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1980s_hatchback_1980s-hatchback_tire_color.jpg"
+    },
+    {
+      "name": "1980s-hatchback_rim_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x.002",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_tire_x.003",
+      "texture": "res://assets/vehicles/cozy_retro_cars/retro_1980s_hatchback_1980s-hatchback_tire_color.jpg"
+    },
+    {
+      "name": "1980s-hatchback_rim_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x.003",
+      "texture": ""
+    },
+    {
+      "name": "1980s-hatchback_window_glass_x",
+      "texture": ""
+    }
+  ],
+  "source_parts": [
+    {
+      "min": [
+        -0.862817883491516,
+        0.200000002980232,
+        -1.9863213300705
+      ],
+      "name": "1980s-hatchback_body",
+      "size": [
+        1.72563588619232,
+        1.24499988555908,
+        3.97264266014099
+      ]
+    },
+    {
+      "min": [
+        0.580057442188263,
+        0.0,
+        0.903678774833679
+      ],
+      "name": "1980s-hatchback_wheel_fl",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        -0.779942572116852,
+        0.0,
+        0.903678774833679
+      ],
+      "name": "1980s-hatchback_wheel_fr",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        0.580057561397552,
+        0.0,
+        -1.47632122039795
+      ],
+      "name": "1980s-hatchback_wheel_rl",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        -0.779942452907562,
+        0.0,
+        -1.47632122039795
+      ],
+      "name": "1980s-hatchback_wheel_rr",
+      "size": [
+        0.19988489151001,
+        0.579999983310699,
+        0.579999923706055
+      ]
+    },
+    {
+      "min": [
+        -0.726620316505432,
+        0.847545742988586,
+        -1.66520142555237
+      ],
+      "name": "1980s-hatchback_windows",
+      "size": [
+        1.45324039459229,
+        0.469733238220215,
+        2.35025119781494
+      ]
+    }
+  ],
+  "triangles": 15612,
+  "file": "godot/assets/vehicles/cozy_retro_cars/retro_1980s_hatchback.glb",
+  "family": "hatchback",
+  "source": "Grab3D",
+  "kit": "Cozy Retro Cars",
+  "page_url": "https://grab3d.com/models/vehicles/1980s-hatchback/",
+  "download_url": "https://grab3d.com/dl/1980s-hatchback/1980s-hatchback.glb",
+  "download_date": "2026-11-23",
+  "sha256": "59447d7f98e191efe367e20d68285e4085b9e1c6880c622e06a535f13c09cae4",
+  "license": "CC0-1.0",
+  "license_text": "CC0-1.0.txt",
+  "runtime": "Unchanged complete source; bake node transforms and merge equivalent materials; source +Z forward. Uniform min(sim length/source length,sim width/source width); stable salted NPC identity chooses primary/retro. Keep source textures, trim, glass, wheels; paint hue mask and measured native lens emission plus source-contact reverse/indicator overlays.",
+  "lamp_regions_source_m": {
+    "front_min_z": 1.766321330070495,
+    "rear_max_z": -1.5863213300704948,
+    "front_y_range": [
+      0.54,
+      0.7
+    ],
+    "rear_y_range": [
+      0.56,
+      0.77
+    ],
+    "white_front_lenses": false
+  },
+  "source_textures": [
+    {
+      "name": "1980s-hatchback_body_normal",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1980s-hatchback_body_basecolor",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1980s-hatchback_body_metallic-1980s-hatchback_body_roughness",
+      "pixels": [
+        2048,
+        2048
+      ]
+    },
+    {
+      "name": "1980s-hatchback_tire_normal",
+      "pixels": [
+        64,
+        256
+      ]
+    },
+    {
+      "name": "1980s-hatchback_tire_color",
+      "pixels": [
+        64,
+        256
+      ]
+    }
+  ],
+  "source_forward_axis": "+Z",
+  "source_ground_y_m": 0,
+  "lighter_variant": "none offered (source manifest triangles_light=null)",
+  "source_material_factors": [
+    {
+      "name": "1980s-hatchback_body_pbr",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_tire_x",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_rim_x",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x",
+      "base_color_linear_rgba": [
+        0.48514994978904724,
+        0.4564110338687897,
+        0.423267662525177,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_tire_x.001",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_rim_x.001",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x.001",
+      "base_color_linear_rgba": [
+        0.48514994978904724,
+        0.4564110338687897,
+        0.423267662525177,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x.001",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_tire_x.002",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_rim_x.002",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x.002",
+      "base_color_linear_rgba": [
+        0.48514994978904724,
+        0.4564110338687897,
+        0.423267662525177,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x.002",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_tire_x.003",
+      "base_color_linear_rgba": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_rim_x.003",
+      "base_color_linear_rgba": [
+        0.8069522380828857,
+        0.838798999786377,
+        0.8631572127342224,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_hubcap_x.003",
+      "base_color_linear_rgba": [
+        0.48514994978904724,
+        0.4564110338687897,
+        0.423267662525177,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_trim_charcoal_x.003",
+      "base_color_linear_rgba": [
+        0.045186202973127365,
+        0.04970656707882881,
+        0.06847816705703735,
+        1
+      ]
+    },
+    {
+      "name": "1980s-hatchback_window_glass_x",
+      "base_color_linear_rgba": [
+        0.520995557308197,
+        0.7681511640548706,
+        0.8549926280975342,
+        0.41999998688697815
+      ]
+    }
+  ],
+  "lamp_adaptation": "Use source yellow or white headlamp and red tail lens texels only inside measured source-space height/depth bands; existing live bits control native lens emission. Reverse/indicators retain existing source-triangle-contact overlays; full body/attachment heading, pitch, roll and road elevation applied."
+}

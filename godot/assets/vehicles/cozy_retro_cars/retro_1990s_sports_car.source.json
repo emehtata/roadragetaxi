@@ -1,0 +1,47 @@
+{
+ "slug": "1990s-sports-car",
+ "triangles": 16983,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "1990s-sports-car.glb",
+   "bytes": 1132192
+  },
+  "blend": {
+   "name": "1990s-sports-car.blend",
+   "bytes": 987640
+  },
+  "fbx": {
+   "name": "1990s-sports-car.fbx",
+   "bytes": 2046796
+  },
+  "obj": {
+   "name": "1990s-sports-car-obj.zip",
+   "bytes": 1037456
+  },
+  "usdz": {
+   "name": "1990s-sports-car.usdz",
+   "bytes": 1769737
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "1.875 x 4.418 x 1.230",
+  "triangles": 16983,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-10-19",
+  "real_size": "1990s two-seat sports coupe, approx. 4.4 x 1.9 x 1.2 m (L x W x H), wheel diameter 0.62 m",
+  "notes": "generic, brand-free 1990s sports car: low rounded wedge, slim clear-glass headlights, large front air intake, side air intakes, rear wing on two posts, full-width tail light band, twin chrome exhausts; front faces -Y; 4 wheels are separate objects with origin on the hub (rotate around local X to roll); hollow cabin with transparent windows, two seats and steering wheel; blank number plates, no brand, no text",
+  "set": "Cozy Retro Cars Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}
