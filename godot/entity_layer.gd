@@ -118,6 +118,10 @@ const CAR_SHAPES := [
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body) - not with --outdoor-3d
 var _layer := 0  # the vehicle being drawn's map layer: --outdoor-3d rides it at its deck height
+var _vertical := VehicleVertical.new()  # the player's taxi: airborne arc over crests (docs/specs/vehicle-airborne-physics.md)
+var _player_speed := 0.0
+var air_height := 0.0  # m the player's taxi is above the road this frame (0 on it)
+var _driven := false  # drawing the player's own taxi (NPC taxis are is_taxi too)
 var _tilts := {}  # vehicle id (or "taxi") -> [pitch, roll] of its 3D car body, eased (Buildings3D.wheel_tilt)
 var deck_height := func(_at: Vector2, _layer: int) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
@@ -1028,15 +1032,30 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 				var lit := engine_on and taxi_sign_on
 				var lamps := lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed)
 				var tilt := Vector2.ZERO
+				var height := 0.0
 				if Buildings3D.opaque:  # visual stance from the road under the wheels, eased so it doesn't jitter
 					var id: Variant = "taxi" if is_taxi else vehicle_id
 					if _tilts.size() > 512:  # ponytail: forget all, prune by seen-this-frame if it ever pops visibly
 						_tilts.clear()
-					tilt = _tilts.get(id, Vector2.ZERO).lerp(Buildings3D.wheel_tilt(c, heading, length, width,
-						func(p: Vector2) -> float: return float(deck_height.call(p, _layer))), 0.25)
+					tilt = _tilts.get(id, Vector2.ZERO)
+					height = float(deck_height.call(c, _layer))
+					if not (_driven and _vertical.airborne):  # in the air keep the last ground tilt
+						tilt = tilt.lerp(Buildings3D.wheel_tilt(c, heading, length, width,
+							func(p: Vector2) -> float: return float(deck_height.call(p, _layer))), 0.25)
 					_tilts[id] = tilt
+					if _driven:  # the driven vehicle may leave the road over a crest; the arc is cosmetic
+						var ground := height
+						_vertical.track(_layer, c, ground)
+						height = _vertical.step(ground, ground - float(deck_height.call(c - f, _layer)), _player_speed, get_process_delta_time())  # slope 1 m behind
+						air_height = height - ground if _vertical.airborne else 0.0
+						if _vertical.airborne:
+							var counters: Dictionary = preload("res://perf.gd").counters
+							counters["airborne_frames"] = counters.get("airborne_frames", 0) + 1
+						else:  # the landing bump: nose down, body squats
+							height -= 0.08 * _vertical.land_bump
+							tilt.x -= 0.1 * _vertical.land_bump
 				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
-					float(deck_height.call(c, _layer)) if Buildings3D.opaque else 0.0, tilt, null if is_taxi else vehicle_id)
+					height, tilt, null if is_taxi else vehicle_id)
 				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
 					return
 				if is_taxi and lit:
@@ -2004,9 +2023,12 @@ func _draw() -> void:
 		_exhaust = lerpf(_exhaust, float(player.get("throttle", 0.0)), 0.15)  # eased: no flicker per snapshot
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true, _exhaust)
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
+	_player_speed = absf(float(player.get("speed", 0.0)))
+	_driven = true
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under,
 		taxi_layer(a))
+	_driven = false
 	taxi_sign_on = false
 	var smoke_timer: float = a.get("taxi", {}).get("taxi_smoke_timer", 0.0)
 	if smoke_timer > 0.0:
