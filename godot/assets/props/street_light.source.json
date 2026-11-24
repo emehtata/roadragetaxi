@@ -1,0 +1,47 @@
+{
+ "slug": "street-light",
+ "triangles": 5280,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "street-light.glb",
+   "bytes": 702900
+  },
+  "blend": {
+   "name": "street-light.blend",
+   "bytes": 597620
+  },
+  "fbx": {
+   "name": "street-light.fbx",
+   "bytes": 1091372
+  },
+  "obj": {
+   "name": "street-light-obj.zip",
+   "bytes": 618039
+  },
+  "usdz": {
+   "name": "street-light.usdz",
+   "bytes": 1027349
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "0.400 x 2.214 x 8.158",
+  "triangles": 5280,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "8 m street light: conical steel pole 190 mm at the base to 76 mm at the top (7.3 m), 60.3 mm curved outreach arm 1.45 m, LED luminaire 720 x 300 x 65 mm, light point height ~8.0 m, 400 x 400 mm anchor plate with 4 x M30",
+  "notes": "LED panel is a separate object (street-light_led_panel) with an emissive texture for night scenes. Service door with triangular-key lock on the back of the pole foot. No text or logos.",
+  "set": "Urban Street Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

@@ -3,6 +3,18 @@
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
     {
+      "name": "Grab3D Urban Street Light and Bollard (CC0)",
+      "paths": ["godot/assets/props/street_light*", "godot/assets/props/bollard*"],
+      "purpose": "Mapped street lamps and bollards in 3D",
+      "shipped": true,
+      "origin": "https://grab3d.com/kits/urban-street/; exact downloads/hashes in source JSON",
+      "copyright": "not named on source pages",
+      "licence": "CC0 1.0 (public domain)",
+      "evidence": "Original manifests/notices beside assets; full CC0 in props/CC0-1.0.txt",
+      "obligations": "none (CC0); project retains provenance and fi/en/de displayed credits",
+      "commercial": "yes", "status": "verified", "remediation": ""
+    },
+    {
       "name": "Grab3D Cozy Vehicles Tractor (CC0)",
       "paths": [
         "godot/assets/vehicles/cozy_vehicles/**"

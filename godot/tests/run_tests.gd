@@ -4177,7 +4177,7 @@ func test_buildings_3d() -> void:
 	check(signal_parts.count(B3.LAMP) == 6, "a signal: only its lit lamp (green) glows")
 	signal_node.free()
 	var posts := B3.lamp_posts_node([[Vector2(5, 0), Vector2.UP]])
-	check(posts != null and posts.mesh.get_aabb().end.y > B3.LAMP_HEIGHT_M and B3.lamp_posts_node([]) == null, "a lamp's post stands to its height; no lamps, no node")
+	check(posts != null and (posts.get_child(0) as MultiMeshInstance3D).multimesh.mesh.get_aabb().size.y * B3.STREET_LIGHT_SCALE >= B3.LAMP_HEIGHT_M-.001 and B3.lamp_posts_node([]) == null, "a lamp's post stands to its height; no lamps, no node")
 	posts.free()
 	var props_out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	B3.props(props_out, [[Vector2.ZERO, 0.0, "bench"], [Vector2(5, 0), 0.0, "not_a_prop"]])
@@ -4878,8 +4878,7 @@ func test_resent_chunk_buildings() -> void:
 	var lamp_rows := [[Vector2(3, 4), Vector2.RIGHT], [Vector2(30, 4), Vector2.UP]]
 	var lamp_arrays := B3.lamp_posts_arrays(lamp_rows)
 	var lamp_node := B3.lamp_posts_node(lamp_rows)
-	check(lamp_arrays["normals"] == B3.flat_normals(lamp_arrays["verts"])
-		and lamp_node.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX] == lamp_arrays["verts"], "lamp posts: worker arrays, the same mesh")
+	check((lamp_node.get_child(0) as MultiMeshInstance3D).multimesh.mesh==B3.street_light_mesh() and lamp_arrays.transforms.size()==2,"lamp posts: pure worker placements, shared source mesh")
 	lamp_node.free()
 	var big := PackedVector3Array()
 	big.resize(B3.MESH_STEP_VERTS * 2 + 3)

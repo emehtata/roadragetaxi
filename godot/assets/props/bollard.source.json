@@ -1,0 +1,47 @@
+{
+ "slug": "bollard",
+ "triangles": 1180,
+ "texture_px": 1024,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "bollard.glb",
+   "bytes": 183212
+  },
+  "blend": {
+   "name": "bollard.blend",
+   "bytes": 232252
+  },
+  "fbx": {
+   "name": "bollard.fbx",
+   "bytes": 270348
+  },
+  "obj": {
+   "name": "bollard-obj.zip",
+   "bytes": 169064
+  },
+  "usdz": {
+   "name": "bollard.usdz",
+   "bytes": 258399
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "0.200 x 0.200 x 1.002",
+  "triangles": 1180,
+  "textures": "PBR 1024px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "114 mm steel bollard, 1.0 m tall, 200 mm base plate",
+  "notes": "two retro-reflective bands; surface-mount base plate with 4 anchors",
+  "set": "Urban Street Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

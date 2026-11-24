@@ -1,0 +1,22 @@
+{
+  "name": "street-light",
+  "source": "https://grab3d.com/models/city/street-light/",
+  "download": "https://grab3d.com/dl/street-light/street-light.glb",
+  "retrieved": "2026-11-24",
+  "sha256": "68cc8b7e67065bc365724c4535ad6a7eb6a2a3d911ef279978a8adda5b82f0ef",
+  "triangles": 5280,
+  "surfaces": 2,
+  "bounds_m": {
+    "size": [
+      0.400000006,
+      8.15813446,
+      2.214291766
+    ],
+    "min": [
+      -0.200000003,
+      0,
+      -1.107145861
+    ]
+  },
+  "runtime": "Uniform7/8.15813446; LED centre xz at streamed lamp row, base grounded on DEM. All parts retained."
+}
