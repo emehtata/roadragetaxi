@@ -15,6 +15,7 @@ res://tests/server_port.gd
 res://tests/dem_terrain.gd
 res://tests/camera_modes.gd
 res://tests/walk_camera_keys.gd
+res://tests/vehicle_vertical.gd
 res://tests/home_interior.gd
 res://tests/electronic_signs.gd
 res://tests/hud_responsive_layout.gd
