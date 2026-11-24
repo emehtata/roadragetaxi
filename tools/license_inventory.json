@@ -3,9 +3,9 @@
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
     {
-      "name": "Grab3D Urban Street Light and Bollard (CC0)",
-      "paths": ["godot/assets/props/street_light*", "godot/assets/props/bollard*"],
-      "purpose": "Mapped street lamps and bollards in 3D",
+      "name": "Grab3D Urban Street Light, Bollard and Bus Stop Shelter (CC0)",
+      "paths": ["godot/assets/props/street_light*", "godot/assets/props/bollard*", "godot/assets/props/bus_stop_shelter*"],
+      "purpose": "Mapped street lamps, bollards and bus stop shelters in 3D",
       "shipped": true,
       "origin": "https://grab3d.com/kits/urban-street/; exact downloads/hashes in source JSON",
       "copyright": "not named on source pages",

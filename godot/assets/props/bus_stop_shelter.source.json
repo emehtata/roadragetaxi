@@ -1,0 +1,47 @@
+{
+ "slug": "bus-stop-shelter",
+ "triangles": 10972,
+ "texture_px": 2048,
+ "triangles_light": null,
+ "texture_px_light": null,
+ "files": {
+  "glb": {
+   "name": "bus-stop-shelter.glb",
+   "bytes": 1720276
+  },
+  "blend": {
+   "name": "bus-stop-shelter.blend",
+   "bytes": 1379555
+  },
+  "fbx": {
+   "name": "bus-stop-shelter.fbx",
+   "bytes": 2535580
+  },
+  "obj": {
+   "name": "bus-stop-shelter-obj.zip",
+   "bytes": 1652582
+  },
+  "usdz": {
+   "name": "bus-stop-shelter.usdz",
+   "bytes": 2514356
+  }
+ },
+ "extras": {
+  "license": "CC0-1.0",
+  "source": "grab3d.com",
+  "dimensions_m": "3.130 x 1.708 x 2.515",
+  "triangles": 10972,
+  "textures": "PBR 2048px: base color, roughness, metallic, normal (baked)",
+  "generator": "Created by grab3d",
+  "created": "2026-09-26",
+  "real_size": "bus stop shelter 3.13 x 1.70 x 2.50 m (frame 3.0 x 1.5 m), bench seat 0.46 m",
+  "notes": "powder-coated 80 mm steel frame, mono-pitch roof panel draining to a rear half-round gutter and downpipe, toughened glass back and left side walls with bird-safety frit band and stainless point clamps, hardwood bench on steel brackets, empty backlit info case (no text or ads); glass and light panel keep their own materials",
+  "set": "Urban Street Kit"
+ },
+ "origin": {
+  "method": "procedural",
+  "detail": "Built procedurally with Blender scripts. The scripts were written with the help of an AI coding assistant. No generative AI model produced the geometry or textures directly.",
+  "ai_content": false,
+  "ai_assisted_code": true
+ }
+}

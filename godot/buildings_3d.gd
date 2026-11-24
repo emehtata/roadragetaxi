@@ -2290,6 +2290,7 @@ static func mesh_steps(arrays: Dictionary) -> Array:
 				var node := _instance(mesh, part.material, LAYER_BUILDINGS)
 				node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 				node.set_meta("prop_material", part.material.resource_name)
+				if arrays.has("shelter_placements"): node.set_meta("shelter_placements", arrays.shelter_placements)
 				return [node])
 	for r in _pieces(arrays.get("ground", PackedVector3Array()).size()):
 		steps.append(func(): return [_instance(_mesh(_cut(arrays["ground"], r), _cut(arrays["ground_colors"], r), PackedVector2Array(), PackedVector2Array(), PackedFloat32Array(), PackedVector2Array(), false, _cut(_n(arrays, "ground"), r)), _shared["ground"], LAYER_BUILDINGS)])
@@ -3035,9 +3036,13 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 	for box: Array in ground.get("shelters", []):  # [footprint, kind]: a bus shelter's glass box roof, a bench
 		var footprint: PackedVector2Array = box[0]
 		if box[1] == "shelter":
-			_raised_polygon_at(out, "deck", footprint, 2.3, 2.45, Color8(70, 80, 90))
-			for p in footprint:
-				_box3d(out, "deck", p, 0.05, 0.0, 2.3, Color8(70, 80, 90))
+			var placement := shelter_placement(footprint)
+			if not placement.is_empty():
+				placement["ground"] = shelter_ground_surfaces(out,footprint)
+				placement["draped"] = not ground.get("ground_heights", {}).is_empty()
+				if not out.has("shelter_placements"): out["shelter_placements"] = []
+				out.shelter_placements.append(placement)
+				_model_prop(out, placement.at, placement.angle, "bus_stop_shelter", placement.scale, placement)
 		else:
 			_raised_polygon_at(out, "deck", footprint, 0.0, 0.45, Color8(120, 82, 50))
 	props(out, ground.get("props", []))
@@ -3447,6 +3452,8 @@ const WIRE_M := 8.6  # the crossarm's height: where the wires hang
 const WIRE_SPAN_MAX_M := 150.0
 
 
+const BUS_STOP_SHELTER_SCENE := preload("res://assets/props/bus_stop_shelter.glb")
+
 const PICNIC_TABLE_SCENE := preload("res://assets/props/picnic_table.glb")
 
 const TRAVEL_TRAILER_SCENE := preload("res://assets/props/travel_trailer.glb")
@@ -3478,13 +3485,21 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 	var slide := kind == "slide"
 	var spring_rider := kind == "spring_rider"
 	var climbing_frame := kind == "climbing_frame"
-	var mesh := merged_model(kind, PICNIC_TABLE_SCENE) if kind == "picnic_table" else merged_model(kind, SWING_RIDE_SCENE if kind == "swing_carousel" else FERRIS_WHEEL_SCENE) if kind in ["swing_carousel", "ferris_wheel"] else merged_model("carousel", CAROUSEL_SCENE) if kind == "carousel" else merged_model("seesaw", SEESAW_SCENE) if kind == "seesaw" else merged_model("climbing_frame", CLIMBING_FRAME_SCENE) if climbing_frame else merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
+	var mesh := merged_model(kind, BUS_STOP_SHELTER_SCENE) if kind == "bus_stop_shelter" else merged_model(kind, PICNIC_TABLE_SCENE) if kind == "picnic_table" else merged_model(kind, SWING_RIDE_SCENE if kind == "swing_carousel" else FERRIS_WHEEL_SCENE) if kind in ["swing_carousel", "ferris_wheel"] else merged_model("carousel", CAROUSEL_SCENE) if kind == "carousel" else merged_model("seesaw", SEESAW_SCENE) if kind == "seesaw" else merged_model("climbing_frame", CLIMBING_FRAME_SCENE) if climbing_frame else merged_model("spring_rider" if spring_rider else ("playground_slide" if slide else "swing_set"), SPRING_RIDER_SCENE if spring_rider else (SLIDE_SCENE if slide else SWING_SCENE))
 	var bounds := mesh.get_aabb()
+	if kind == "bus_stop_shelter":
+		# Godot does not import glTF transmission; retain the authored tint as alpha glass.
+		for surface in mesh.get_surface_count():
+			var material: StandardMaterial3D = mesh.surface_get_material(surface)
+			if "glass_" in material.resource_name:
+				material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+				material.albedo_color.a = 0.15 if material.resource_name.ends_with("clear") else 0.65
 	var scale := minf(3.2 / bounds.size.z, minf(1.8 / bounds.size.y, 0.9 / bounds.size.x)) if slide else minf(3.4 / bounds.size.x, minf(2.2 / bounds.size.y, 1.8 / bounds.size.z))
 	if spring_rider: scale = 0.8 / bounds.size.y
 	if climbing_frame: scale = minf(2.4 / bounds.size.x, minf(1.6 / bounds.size.y, 2.4 / bounds.size.z))
 	if kind in ["carousel", "swing_carousel", "ferris_wheel"]: scale = 1.0
 	if kind == "picnic_table": scale = minf(1.8 / bounds.size.x, minf(0.75 / bounds.size.y, 1.5 / bounds.size.z))
+	if kind == "bus_stop_shelter": scale = 1.0
 	if kind == "seesaw": scale = minf(3.0 / bounds.size.x, minf(0.6 / bounds.size.y, 0.3 / bounds.size.z))
 	var centre := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
 	var basis := Basis(Vector3.UP, PI/2.0) if slide or spring_rider else Basis.IDENTITY
@@ -3495,12 +3510,72 @@ static func prop_model_surfaces(kind: String) -> Dictionary:
 		for index: int in arrays[Mesh.ARRAY_INDEX]:
 			part.verts.append(basis * (arrays[Mesh.ARRAY_VERTEX][index] - centre) * scale)
 			part.normals.append(basis * arrays[Mesh.ARRAY_NORMAL][index])
-			part.uv.append(arrays[Mesh.ARRAY_TEX_UV][index])
-			var tangent: Vector3 = basis * Vector3(arrays[Mesh.ARRAY_TANGENT][index*4], arrays[Mesh.ARRAY_TANGENT][index*4+1], arrays[Mesh.ARRAY_TANGENT][index*4+2])
-			part.tangents.append_array(PackedFloat32Array([tangent.x,tangent.y,tangent.z,arrays[Mesh.ARRAY_TANGENT][index*4+3]]))
+			part.uv.append(arrays[Mesh.ARRAY_TEX_UV][index] if arrays[Mesh.ARRAY_TEX_UV] != null else Vector2.ZERO)
+			var source_tangents = arrays[Mesh.ARRAY_TANGENT]
+			var tangent: Vector3 = basis * Vector3(source_tangents[index*4], source_tangents[index*4+1], source_tangents[index*4+2]) if source_tangents != null else part.normals[-1].cross(Vector3.FORWARD).normalized()
+			if tangent.length_squared() < 0.1: tangent = Vector3.RIGHT
+			part.tangents.append_array(PackedFloat32Array([tangent.x,tangent.y,tangent.z,source_tangents[index*4+3] if source_tangents != null else 1.0]))
 		surfaces[kind+":"+str(surface)] = part
 	_prop_model_surfaces[kind] = surfaces
 	return surfaces
+
+
+static func shelter_ground_surfaces(out: Dictionary, footprint: PackedVector2Array) -> Dictionary:
+	var bounds := Rect2(footprint[0],Vector2.ZERO)
+	for point in footprint: bounds = bounds.expand(point)
+	var surfaces := {}
+	for key in ["ground","road"]:
+		var source: PackedVector3Array = out.get(key,PackedVector3Array())
+		var nearby := PackedVector3Array()
+		for i in range(0,source.size(),3):
+			var triangle := Rect2(Vector2(source[i].x,source[i].z),Vector2.ZERO)
+			for k in [1,2]: triangle = triangle.expand(Vector2(source[i+k].x,source[i+k].z))
+			if bounds.intersects(triangle,true):
+				nearby.append_array(PackedVector3Array([source[i],source[i+1],source[i+2]]))
+		surfaces[key] = nearby
+	return surfaces
+
+
+static func shelter_surface_lift(out: Dictionary, at: Vector2, draped: bool) -> float:
+	var lift := 0.0
+	# These are the actual flat ground/road triangles, before the shared DEM drape.
+	for key in ["ground", "road"]:
+		var vertices: PackedVector3Array = out.get(key,PackedVector3Array())
+		for i in range(0,vertices.size(),3):
+			var a := Vector2(vertices[i].x,vertices[i].z)
+			var b := Vector2(vertices[i+1].x,vertices[i+1].z)
+			var c := Vector2(vertices[i+2].x,vertices[i+2].z)
+			if absf((b-a).cross(c-a)) < 0.000001: continue
+			var winding := (b-a).cross(c-a)
+			if (b-a).cross(at-a)*winding >= 0.0 and (c-b).cross(at-b)*winding >= 0.0 and (a-c).cross(at-c)*winding >= 0.0:
+				lift = maxf(lift,road_lift(vertices[i].y) if draped else vertices[i].y)
+	return lift
+
+
+static func shelter_placement(footprint: PackedVector2Array) -> Dictionary:
+	if footprint.size() != 4: return {}
+	for point in footprint:
+		if not point.is_finite(): return {}
+	var along := footprint[1] - footprint[0]
+	var back := footprint[3] - footprint[0]
+	if along.length() < 0.01 or back.length() < 0.01 or absf(along.normalized().dot(back.normalized())) > 0.02: return {}
+	if (footprint[0]+along+back).distance_to(footprint[2]) > 0.03: return {}
+	# The first ordered edge faces the road; the authored opening faces +Z.
+	var front := -back.normalized()
+	var half := Vector2(1.565000057220459,0.8542499840259552)  # complete source horizontal bounds
+	var centre := (footprint[0]+footprint[2])*0.5
+	var angle := atan2(front.x,front.y)
+	var scale := 1.0
+	# Rounded streamed coordinates can skew edges slightly: contain every source corner.
+	for i in 4:
+		var edge := footprint[(i+1)%4]-footprint[i]
+		if edge.length() < 0.01: return {}
+		var normal := edge.normalized().orthogonal()
+		var extent := 0.0
+		for corner in [half,Vector2(-half.x,half.y),-half,Vector2(half.x,-half.y)]:
+			extent = maxf(extent,absf(normal.dot(corner.rotated(-angle))))
+		scale = minf(scale,absf(normal.dot(centre-footprint[i]))/extent)
+	return {"at": centre, "angle": angle, "scale": scale}
 
 
 static func camping_scale(kind: String, length: float) -> float:
@@ -3551,8 +3626,9 @@ static func _camping_model_surfaces(kind: String) -> Dictionary:
 	return result
 
 
-static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String, scale := 1.0) -> void:
+static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String, scale := 1.0, grounding := {}) -> void:
 	var placement := Transform3D(Basis(Vector3.UP, angle), to_3d(at))
+	var lifts := {}
 	if not out.has("prop_surfaces"): out["prop_surfaces"] = {}
 	var surfaces := prop_model_surfaces(kind)
 	for key in surfaces:
@@ -3561,7 +3637,12 @@ static func _model_prop(out: Dictionary, at: Vector2, angle: float, kind: String
 			out.prop_surfaces[key] = {"verts": PackedVector3Array(), "normals": PackedVector3Array(), "uv": PackedVector2Array(), "tangents": PackedFloat32Array(), "material": source.material}
 		var target: Dictionary = out.prop_surfaces[key]
 		for i in source.verts.size():
-			target.verts.append(placement * (source.verts[i] * scale))
+			var vertex: Vector3 = placement * (source.verts[i] * scale)
+			if not grounding.is_empty():
+				var point := Vector2(vertex.x,vertex.z)
+				if not lifts.has(point): lifts[point] = shelter_surface_lift(grounding.ground,point,grounding.draped)
+				vertex.y += lifts[point]
+			target.verts.append(vertex)
 			target.normals.append(placement.basis * source.normals[i])
 			var tangent: Vector3 = placement.basis * Vector3(source.tangents[i*4], source.tangents[i*4+1], source.tangents[i*4+2])
 			target.tangents.append_array(PackedFloat32Array([tangent.x, tangent.y, tangent.z, source.tangents[i*4+3]]))

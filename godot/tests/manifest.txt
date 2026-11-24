@@ -1,3 +1,4 @@
+res://tests/bus_stop_shelter_glb.gd
 # Godot test manifest: the one list run by tools/run_godot_tests.py, used by
 # `make godot-test` and the CI "Client tests" step. Every godot/tests/*.gd is
 # listed here, as a headless assertion test or under [excluded] with a reason

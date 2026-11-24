@@ -1,0 +1,151 @@
+{
+  "name": "Bus Stop Shelter",
+  "source": "https://grab3d.com/models/city/bus-stop-shelter/",
+  "download": "https://grab3d.com/dl/bus-stop-shelter/bus-stop-shelter.glb",
+  "retrieved": "2026-11-24",
+  "sha256": "7d716f09ae2d63d4b85618ee956803b59eb8aaae2c58328629545eb79bcd260c",
+  "triangles": 10972,
+  "surfaces": 5,
+  "children": 6,
+  "child_translation_m": [
+    0,
+    0,
+    0.04225000739097595
+  ],
+  "bounds_m": {
+    "min": [
+      -1.565000057220459,
+      0,
+      -0.8542499840259552
+    ],
+    "size": [
+      3.130000114440918,
+      2.5152597427368164,
+      1.7084999680519104
+    ]
+  },
+  "runtime": "Ground-centred baked child transforms, source front +Z. Ordered first footprint edge is road-facing; yaw +Z toward that edge. Uniform min(1, footprint width/3.13000011444, depth/1.70849996805); normal 5x1.6 footprint scale 0.936494602; per-vertex DEM grounding. No new collision/activity. Godot ignores KHR_materials_transmission, so clear/frit authored tints use alpha 0.15/0.65; remaining material properties and all geometry retained. Local base lift is the maximum drawn ground/road triangle height beneath each vertex, using road_lift when DEM draping is active; nearby triangle candidates and per-horizontal-position samples are cached per shelter. Metadata accompanies batches for exact verification. Each half-plane of rounded footprint constrains the rotated full source corners, preserving containment on either side.",
+  "child_nodes": [
+    {
+      "name": "bus-stop-shelter_back_0_glass",
+      "translation": [
+        0,
+        0,
+        0.04225000739097595
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "bus-stop-shelter_back_1_glass",
+      "translation": [
+        0,
+        0,
+        0.04225000739097595
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "bus-stop-shelter_bench",
+      "translation": [
+        0,
+        0,
+        0.04225000739097595
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "bus-stop-shelter_body",
+      "translation": [
+        0,
+        0,
+        0.04225000739097595
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "bus-stop-shelter_info_light",
+      "translation": [
+        0,
+        0,
+        0.04225000739097595
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "bus-stop-shelter_side_glass",
+      "translation": [
+        0,
+        0,
+        0.04225000739097595
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ]
+    }
+  ],
+  "material_triangles": {
+    "glass_clear": 60,
+    "glass_frit": 24,
+    "bench_pbr": 780,
+    "body_pbr": 10096,
+    "info_light": 12
+  }
+}
