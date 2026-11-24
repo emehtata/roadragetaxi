@@ -165,3 +165,11 @@ def test_packaged_tile_from_zip_matches_loose_tile(tmp_path):
 def test_packaged_zip_parts_under_100_mb():
     parts = elevation.zip_parts(elevation.PACKAGED_DEM80)
     assert len(parts) >= 2 and all(p.stat().st_size < 100_000_000 for p in parts)
+
+
+def test_test_hill_peaks_at_its_centre_and_is_flat_outside():
+    hill = elevation.test_hill(1000.0, 2000.0, 12.0, 30.0)
+    dem = elevation.Dem(hill["origin"], hill["step"], hill["cols"], hill["heights"])
+    assert dem.height_m(1000.0, 2000.0) == pytest.approx(12.0, abs=0.5)
+    assert dem.height_m(1000.0 + 61.0, 2000.0) == 0.0
+    assert dem.height_m(1000.0 + 20.0, 2000.0) < dem.height_m(1000.0, 2000.0)

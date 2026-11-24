@@ -299,6 +299,10 @@ class SimulationServer:
         from ..osm.elevation import load_ground, missing_ground_message
         terrain = bool(getattr(args, "terrain_dem80", False))
         self.world.dem = load_ground(default_cache_root(), city_choice.chosen_city, terrain)  # render-only ground; None: flat
+        if getattr(args, "test_hill", None):  # visual tests: the synthetic hill, nothing read from or written to the cache
+            from ..osm.elevation import Dem, test_hill
+            hill = test_hill(*(float(v) for v in args.test_hill.split(",")))
+            self.world.dem = Dem(hill["origin"], hill["step"], hill["cols"], hill["heights"])
         self.ground_error = missing_ground_message(default_cache_root(), city_choice.chosen_city) \
             if terrain and self.world.dem is None else ""  # printed in the Godot console too (world message)
         self.initial_map_preparation = (

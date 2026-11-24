@@ -43,6 +43,8 @@ def parse_server_args():
     # Developer visual tests (tools/visual_test.py): fixed, repeatable start conditions. Never in normal play.
     parser.add_argument("--test-pose", default=None, metavar="X,Y,HEADING",
                         help="visual tests: start in the taxi, engine on, at EPSG:3067 metres, heading in radians")
+    parser.add_argument("--test-hill", default=None, metavar="X,Y,HEIGHT,RADIUS",
+                        help="visual tests: a synthetic ground hill (EPSG:3067 m) instead of any DEM; writes no cache")
     parser.add_argument("--test-weather", choices=["clear", "rain", "slush", "snow"], default=None,
                         help="visual tests: this weather, unchanging (no historical weather)")
     parser.add_argument("--test-cloud", type=float, default=None, help="visual tests: cloud cover 0..1, unchanging")

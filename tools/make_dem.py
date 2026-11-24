@@ -9,11 +9,12 @@ A synthetic test raster (no real heights; for render checks only):
 """
 import argparse
 import json
-import math
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from theroadragetrip.osm.elevation import test_hill  # noqa: E402  (the server's --test-hill uses the same raster)
 
 
 def from_asc(path: Path) -> dict:
@@ -32,18 +33,6 @@ def from_asc(path: Path) -> dict:
     values = [None if v == nodata else v for v in values]  # NoData stays NoData (JSON null), never 0 m
     grid = [values[r * cols:(r + 1) * cols] for r in range(rows)][::-1]
     return {"origin": [x0, y0], "step": step, "cols": cols, "heights": [v for row in grid for v in row]}
-
-
-def test_hill(x: float, y: float, height: float, radius: float, step: float = 10.0) -> dict:
-    """A smooth hill of `height` m at (x, y), flat 0 m from 2 * radius out."""
-    n = int(4 * radius / step) + 1
-    x0, y0 = x - 2 * radius - step / 2, y - 2 * radius - step / 2
-    heights = []
-    for r in range(n):
-        for c in range(n):
-            d = math.hypot(x0 + (c + 0.5) * step - x, y0 + (r + 0.5) * step - y) / (2 * radius)
-            heights.append(round(height * 0.5 * (1 + math.cos(math.pi * min(d, 1.0))), 2))
-    return {"origin": [x0, y0], "step": step, "cols": n, "heights": heights}
 
 
 def main() -> None:
