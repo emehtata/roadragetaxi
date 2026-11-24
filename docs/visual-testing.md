@@ -27,6 +27,7 @@ developer-only flags, never used in normal play:
 | `--test-weather clear\|rain\|slush\|snow` | that weather, unchanging; historical (FMI) weather off |
 | `--test-cloud C` | cloud cover held at C (0..1) |
 | `--test-seed N` | seeds the random generators: the same traffic and wind draws |
+| `--test-hill X,Y,HEIGHT,RADIUS` | a synthetic cosine ridge at EPSG:3067 metres as the render ground (replaces any DEM; nothing read from or written to the cache); give it with the scenario's `server_args` |
 | `--test-time-scale 0` | the game clock held at `--start-time` |
 
 plus `--preset CITY`, a `--bbox` of `box_km` around the pose and
@@ -103,12 +104,14 @@ Scenarios live in `tools/visual_scenarios.json`. Fields:
 | `sun_altitude_deg` | `[min, max]` the light the scenario needs |
 | `zoom` | camera zoom factor (the camera is top-down, following the vehicle) |
 | `view` | `3d` (default) or `2d` |
-| `requires` | `lamps_in_view`, `buildings_in_view` minimums; `notice_contains`: a HUD notice with that text, wholly on screen (the data-source notice's ~15 s clock is held while it is checked) |
+| `requires` | `lamps_in_view`, `buildings_in_view` minimums; `ground_rise`: `[x, y, m]`, ready only when the ground at (x, y) is m metres above the pose's (a `--test-hill` is loaded); `airborne_frames`: the run fails if the taxi was in the air for fewer frames; `notice_contains`: a HUD notice with that text, wholly on screen (the data-source notice's ~15 s clock is held while it is checked) |
 | `measure_s` / `drive_s` | seconds measured standing / driving |
 | `seed` | random seed (default 1) |
 | `graphics` | graphics settings under test, over the saved ones, e.g. `{"brightness": 1.4}` |
 | `godot_args`, `server_args` | extra flags |
 | `windshield` | press `I` once the taxi is ready and require the forward view before capture |
+| `speed_limiter` | `false` turns the speed limiter (V) off for the whole run, so a `drive_s` drive can exceed the street's limit (the taxi reaches 30 m/s in about 8 s) |
+| `capture_airborne_m` | with `drive_s`: take the screenshot as soon as the player's taxi is this many metres above the road (`entities.air_height`); the run fails if it never was |
 | `lane_assist` | press `K` once the taxi is ready ("keep car on lane") |
 
 ### Choosing the place

@@ -353,6 +353,7 @@ func _process(delta: float) -> void:
 			test_eye["ground"] = main.map_layer.deck_height(test_eye["at"], 0)
 		Buildings3D.current.test_eye = test_eye
 		RenderingServer.viewport_set_measure_render_time(Buildings3D.current._view.get_viewport_rid(), true)
+	main.speed_limiter = scenario.get("speed_limiter", true)  # false: the drive may exceed the street's limit
 	if scenario.get("lane_assist", false) and not _lane_assist_pressed and not main.entities.player_body().is_empty():
 		var lane_key := InputEventKey.new()  # K: "keep car on lane"
 		lane_key.keycode = KEY_K
@@ -391,7 +392,8 @@ func _process(delta: float) -> void:
 			if not reason in _measure_failures:
 				_measure_failures.append(reason)
 		_measure_left -= delta
-		if _measure_left <= 0.0:
+		var wanted_air: float = float(scenario.get("capture_airborne_m", 0.0))
+		if _measure_left <= 0.0 or (wanted_air > 0.0 and main.entities.air_height >= wanted_air):  # airborne: shot while in the arc
 			_finish()
 		return
 	if str(missing) != str(_missing):
@@ -420,7 +422,7 @@ func _process(delta: float) -> void:
 		main.entities.buffer.reset_diagnostics()
 		main.entities.buffer.timeline.clear()
 		main.entities.buffer.record_timeline = true  # M7: every state's arrival, server time and tile status
-		for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max"]:
+		for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max", "airborne_frames"]:
 			perf.counters.erase(key)
 	elif _elapsed > TIMEOUT_S:
 		_write({"status": "failed", "errors": ["not ready after %d s" % TIMEOUT_S] + _missing})
@@ -871,6 +873,12 @@ func check() -> Array:
 		_counts["carts_in_view"] = seen
 		if seen < int(scenario["requires"]["carts_in_view"]):
 			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
+	var rise: Array = scenario.get("requires", {}).get("ground_rise", [])  # [x, y, min m]: the ground there is this far above the pose's (the synthetic hill is loaded)
+	if rise.size() == 3:
+		var there: float = main.map_layer.deck_height(MapMath.point(main.entities.origin, rise[0], rise[1]), 0)
+		var here: float = main.map_layer.deck_height(main.entities.player_position(), 0)
+		if there - here < float(rise[2]):
+			missing.append("ground at the hill %.2f m above the pose's %.2f m, the scenario needs %.1f m (hill not loaded)" % [there, here, rise[2]])
 	if scenario.get("requires", {}).get("dem_ground", false):  # DEM terrain loaded under the taxi; the camera rides on it
 		var ground: float = main.map_layer.deck_height(main.entities.player_position(), 0)
 		_counts["dem_ground_m"] = ground
@@ -1822,6 +1830,7 @@ func _finish() -> void:
 		_indoor_snapshot = _indoor_hint_result()
 	if scenario.has("hud_fixture"):
 		_hud_snapshot = _hud_result()  # keep capture-time state while the server debug request awaits
+	var air_at_shot: float = main.entities.air_height
 	set_process(false)  # awaits below: finish once
 	var path := out_dir.path_join("screenshot.png")
 	main.get_viewport().get_texture().get_image().save_png(path)
@@ -1842,12 +1851,17 @@ func _finish() -> void:
 			sections[name] = {"avg_ms": s[1] / 1000.0 / maxi(1, s[0]), "max_ms": s[2] / 1000.0}
 	sections["long_frames"] = _long_frames
 	sections["state_timeline"] = _state_timeline_summary(main.entities.buffer)
+	var air_frames: int = perf.counters.get("airborne_frames", 0)
+	if air_frames < int(scenario.get("requires", {}).get("airborne_frames", 0)):
+		_measure_failures.append("airborne_frames %d, the scenario needs %d" % [air_frames, scenario["requires"]["airborne_frames"]])
+	if float(scenario.get("capture_airborne_m", 0.0)) > air_at_shot:
+		_measure_failures.append("no shot taken in the air: the car was %.2f m above the road, the scenario needs %.2f m" % [air_at_shot, scenario["capture_airborne_m"]])
 	var ok := _measure_failures.is_empty()
 	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max, "spawn_rejections": rejections}
 	var lamps := {}
 	for key in ["lamp_reassigned", "lamp_moved_lit", "lamp_lights_max", "lamps_offered_max"]:
 		lamps[key] = perf.counters.get(key, 0)
-	_write({"status": "passed" if ok else "failed", "screenshot": path, "frames": perf.summary(_frames), "render": sections, "lamps": lamps, "traffic": traffic,
+	_write({"status": "passed" if ok else "failed", "screenshot": path, "frames": perf.summary(_frames), "render": sections, "lamps": lamps, "airborne_frames": perf.counters.get("airborne_frames", 0), "traffic": traffic,
 		"snow_visibility": _snow_snapshots, "errors": [] if ok else ["conditions lost while measuring"] + _measure_failures})
 	main.get_tree().quit(0 if ok else 1)
 
