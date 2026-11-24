@@ -2073,8 +2073,8 @@ func _lamps_3d() -> void:
 	if not build_async:
 		_set_dynamic_3d("lamps", B3.lamp_posts_node(rows, ground_heights))
 		return
-	# The per-lamp boxes are pure arrays: a worker builds them (a motorway chunk's
-	# hundreds of lamps took 30-75 ms on the main thread); main only makes the mesh.
+	B3.street_light_mesh()  # prepare shared resources before the worker
+	# Workers calculate placements; the main thread uploads one instance batch.
 	_lamp_build += 1
 	var build_id := _lamp_build
 	if _lamp_task >= 0:
@@ -2088,7 +2088,7 @@ func _lamps_ready(arrays: Dictionary, build_id: int) -> void:
 	WorkerThreadPool.wait_for_task_completion(_lamp_task)
 	_lamp_task = -1
 	var started := Time.get_ticks_usec()
-	_set_dynamic_3d("lamps", B3._world_node(arrays))
+	_set_dynamic_3d("lamps", B3.lamp_posts_from_arrays(arrays))
 	Perf.add("chunk_lamps_main", Time.get_ticks_usec() - started)
 
 

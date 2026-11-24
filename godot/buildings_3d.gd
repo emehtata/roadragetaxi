@@ -692,11 +692,15 @@ func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) ->
 		return
 	var on := level > 0.01
 	_lamp_level = level
+	set_street_light_emission(level)
 	if _lamp_keys.is_empty():
 		_lamp_keys.resize(STREET_POOL)
 		_lamp_keys.fill(Vector2.INF)
 		_lamp_weights.resize(STREET_POOL)
 		_lamp_targets.resize(STREET_POOL)
+	var positions := {}
+	for row: Array in lamps:
+		if row.size() > 3: positions[row[0]] = row[3]
 	var before := _lamp_keys.duplicate()
 	var reaches := assign_lamps(_lamp_keys, _lamp_weights, _lamp_targets, lamps if on else [], STREET_KEEP)
 	var counters: Dictionary = preload("res://perf.gd").counters  # the driving bench's (--bench) light stability
@@ -709,7 +713,7 @@ func set_area_lights(level: float, lamps: Array, shops: Array, floods: Array) ->
 			var lamp: SpotLight3D = _street_lights[i]
 			var reach: float = reaches[i] * 1.6
 			var ground: float = get_parent().deck_height(_lamp_keys[i], 0, false) if get_parent().has_method("deck_height") else 0.0
-			lamp.position = to_3d(_lamp_keys[i], ground + LAMP_HEIGHT_M - 0.2)  # the housing's underside, on the DEM ground
+			lamp.position = positions.get(_lamp_keys[i], to_3d(_lamp_keys[i], ground + LAMP_HEIGHT_M - 0.2))  # measured source panel on the pole's DEM
 			lamp.spot_range = Vector2(reach, LAMP_HEIGHT_M).length()
 			lamp.spot_angle = rad_to_deg(atan2(reach, LAMP_HEIGHT_M))
 	_place_omnis(_shop_lights, shops if on else [], 2.5, 1.2 * level, 1.0)
@@ -3165,7 +3169,7 @@ static func trees_node(rows: Array, bollards: PackedVector2Array, grid := {}, fa
 			if not models.has(row[1]): models[row[1]] = []
 			models[row[1]].append(row)
 		else: primitive.append(row)
-	var parts := tree_parts(primitive, bollards, grid, far)
+	var parts := tree_parts(primitive, PackedVector2Array(), grid, far)
 	var node := Node3D.new()
 	for kind: String in models:
 		var multi := MultiMesh.new()
@@ -3181,6 +3185,20 @@ static func trees_node(rows: Array, bollards: PackedVector2Array, grid := {}, fa
 		instance.layers = LAYER_BUILDINGS
 		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		instance.set_meta("nature_kind", kind)
+		node.add_child(instance)
+	if not bollards.is_empty():
+		var mesh := merged_model("bollard", BOLLARD_SCENE)
+		var multi := MultiMesh.new()
+		multi.transform_format = MultiMesh.TRANSFORM_3D
+		multi.mesh = mesh
+		multi.instance_count = bollards.size()
+		for i in bollards.size():
+			multi.set_instance_transform(i, bollard_transform(bollards[i], grid))
+		var instance := MultiMeshInstance3D.new()
+		instance.multimesh = multi
+		instance.layers = LAYER_BUILDINGS
+		instance.set_meta("urban_kind", "bollard")
+		instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		node.add_child(instance)
 	for name in parts:
 		if parts[name].is_empty():
@@ -3289,26 +3307,74 @@ static func _world_node(out: Dictionary) -> MeshInstance3D:
 	return node
 
 
-## rows [lamp position, toward the road (unit)]: the pole 1.2 m behind the lamp, its arm and head.
-static func lamp_posts_node(rows: Array, grid := {}) -> MeshInstance3D:
-	return _world_node(lamp_posts_arrays(rows, grid))
+## The complete source pole is anchored by its LED panel at the streamed lamp position.
+const STREET_LIGHT_SCENE := preload("res://assets/props/street_light.glb")
+const BOLLARD_SCENE := preload("res://assets/props/bollard.glb")
+const STREET_LIGHT_SCALE := LAMP_HEIGHT_M / 8.158134460449219
+const STREET_LIGHT_PANEL := Vector3(0.0, 8.03471565246582, 0.7742050290107727)
+const STREET_LIGHT_BASE := Vector3(0.0, 0.0, -0.9071458578109741)
+static var _street_light_mesh: ArrayMesh
 
 
-## lamp_posts_node's arrays (pure data, worker-safe), normals included; lifted onto the DEM `grid` at the pole.
+static func bollard_transform(at: Vector2, grid := {}) -> Transform3D:
+	return Transform3D(Basis.IDENTITY.scaled(Vector3.ONE * (0.9 / 1.0019999742507935)), to_3d(at, ground_height(grid, at)))
+
+
+static func street_light_mesh() -> ArrayMesh:
+	if _street_light_mesh != null: return _street_light_mesh
+	_street_light_mesh = merged_model("street_light", STREET_LIGHT_SCENE).duplicate() as ArrayMesh
+	var panel: StandardMaterial3D = _street_light_mesh.surface_get_material(1).duplicate()
+	panel.emission_enabled = false
+	_street_light_mesh.surface_set_material(1, panel)
+	return _street_light_mesh
+
+
+static func set_street_light_emission(level: float) -> void:
+	var panel: StandardMaterial3D = street_light_mesh().surface_get_material(1)
+	panel.emission_enabled = level > 0.01
+	panel.emission_energy_multiplier = 3.0 * level
+
+
+static func street_light_transform(lamp: Vector2, toward: Vector2, grid := {}) -> Transform3D:
+	var basis := Basis(Vector3.UP, atan2(toward.x, toward.y)).scaled(Vector3.ONE * STREET_LIGHT_SCALE)
+	var offset := basis * STREET_LIGHT_PANEL
+	var origin := to_3d(lamp) - Vector3(offset.x, 0.0, offset.z)
+	var base := origin + basis * STREET_LIGHT_BASE
+	origin.y = ground_height(grid, Vector2(base.x, base.z))
+	return Transform3D(basis, origin)
+
+
+static func street_light_position(lamp: Vector2, toward: Vector2, grid := {}) -> Vector3:
+	return street_light_transform(lamp, toward, grid) * STREET_LIGHT_PANEL
+
+
+static func lamp_posts_node(rows: Array, grid := {}) -> Node3D:
+	street_light_mesh()  # immutable source prepared on the main thread
+	return lamp_posts_from_arrays(lamp_posts_arrays(rows, grid))
+
+
+static func lamp_posts_from_arrays(arrays: Dictionary) -> Node3D:
+	if arrays.transforms.is_empty(): return null
+	var node := Node3D.new()
+	var multi := MultiMesh.new()
+	multi.transform_format = MultiMesh.TRANSFORM_3D
+	multi.mesh = street_light_mesh()
+	multi.instance_count = arrays.transforms.size()
+	for i in arrays.transforms.size(): multi.set_instance_transform(i, arrays.transforms[i])
+	var instance := MultiMeshInstance3D.new()
+	instance.multimesh = multi
+	instance.layers = LAYER_BUILDINGS
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	node.add_child(instance)
+	return node
+
+
+## Worker-safe placements only; the shared source mesh is prepared and instanced on the main thread.
 static func lamp_posts_arrays(rows: Array, grid := {}) -> Dictionary:
-	var out := _empty_arrays()
-	var steel := Color8(110, 112, 115)
+	var transforms: Array[Transform3D] = []
 	for row: Array in rows:
-		var lamp: Vector2 = row[0]
-		var pole: Vector2 = lamp - row[1] * 1.2
-		var g := ground_height(grid, pole)
-		_car_box(out, pole.x - 0.08, pole.x + 0.08, pole.y - 0.08, pole.y + 0.08, g, g + LAMP_HEIGHT_M + 0.1, steel)
-		for k in 3:
-			var p := pole.lerp(lamp, (k + 0.5) / 3.0)
-			_car_box(out, p.x - 0.22, p.x + 0.22, p.y - 0.05, p.y + 0.05, g + LAMP_HEIGHT_M - 0.02, g + LAMP_HEIGHT_M + 0.08, steel)
-		_car_box(out, lamp.x - 0.28, lamp.x + 0.28, lamp.y - 0.28, lamp.y + 0.28, g + LAMP_HEIGHT_M - 0.2, g + LAMP_HEIGHT_M, Color8(60, 62, 64))
-	out["normals"] = flat_normals(out["verts"])
-	return out
+		transforms.append(street_light_transform(row[0], row[1], grid))
+	return {"transforms": transforms}
 
 
 const SIGNAL_COLORS := [[Color(1.0, 0.12, 0.12), Color8(60, 10, 10)], [Color(1.0, 0.82, 0.0), Color8(60, 50, 0)], [Color(0.16, 0.94, 0.24), Color8(10, 50, 15)]]

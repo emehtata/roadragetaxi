@@ -211,16 +211,23 @@ func _lineup_train(name: String, look: String, lengths: Array, width: float, y: 
 	return {"id": "lineup_" + name, "name": name, "width_m": width, "state": "STOPPED", "speed": 0.0, "line": "", "cars": cars}
 
 
+func _street_broken_state(message:Dictionary)->void:
+	if not message.has("state"):return
+	var point:Array=scenario.street_broken
+	message.state["knocked_posts"]=[[point[0],point[1],0.0,"street_lamp"]]
+
+
 func _nature_profile_state(message: Dictionary) -> void:
 	# A render-only benchmark: variable traffic must not change the compared actor population.
 	var state: Dictionary = message.get("state", {})
-	if scenario.get("id","")=="cozy_vehicles_profile":state.get("weather",{})["wind_vector_mps"]=[0.0,0.0]
+	if scenario.get("id","")=="cozy_vehicles_profile" or scenario.get("street_profile",false):state.get("weather",{})["wind_vector_mps"]=[0.0,0.0]
 	for collection: String in ["npcs", "pedestrians", "trains", "protests", "brawls"]:
 		state[collection] = []
 
 
 func _ready() -> void:
 	if scenario.get("nature_profile",false): main.sim.state_received.connect(_nature_profile_state)
+	if scenario.has("street_broken"):main.sim.state_received.connect(_street_broken_state)
 	if scenario.has("indoor_hint") or scenario.get("snow_visibility", false) or scenario.get("nature_profile",false):
 		main.get_window().mode = Window.MODE_WINDOWED
 		main.get_window().size = Vector2i(scenario["resolution"][0], scenario["resolution"][1])
@@ -404,6 +411,11 @@ func _process(delta: float) -> void:
 		if driving:
 			_measure_left = float(scenario["drive_s"])
 		var perf := preload("res://perf.gd")
+		if scenario.get("street_profile",false):
+			for name:String in ["chunk_lamps_3d","chunk_lamps_main"]:
+				if perf.sections.has(name):
+					var section:Array=perf.sections[name]
+					_street_build_sections[name]={"count":section[0],"avg_ms":section[1]/1000.0/maxi(1,section[0]),"max_ms":section[2]/1000.0}
 		perf.reset()
 		main.entities.buffer.reset_diagnostics()
 		main.entities.buffer.timeline.clear()
@@ -599,6 +611,91 @@ var _nature_counts := {}
 var _nature_seen := {}
 
 
+var _urban_seen:={}
+var _street_build_sections:={}
+func _urban_readiness(camera:Camera3D,hud:Array)->Array:
+	_urban_seen={}
+	if _elapsed<20.0:return ["street source outer streaming settling"]
+	if camera==null:return ["street source needs 3D camera"]
+	var target:Array=scenario.get("street_target",scenario.get("bollard_target",[]))
+	var bollard:=scenario.has("bollard_target")
+	for chunk in main.map_layer._chunks.values():
+		var rows:Array=chunk._data.get("bollards",[]) if bollard else chunk._data.get("street_lights",[])
+		for i in rows.size():
+			var row:Array=rows[i]
+			if Vector2(row[0],row[1]).distance_to(Vector2(target[0],target[1]))>.15:continue
+			var local:=MapMath.point(chunk._origin,row[0],row[1])
+			if not bollard and chunk._broken.has(i):continue
+			var group:Node3D=chunk._dynamic_3d.get("trees" if bollard else "lamps")
+			if group==null:continue
+			var expected:Transform3D=Buildings3D.bollard_transform(local,chunk.ground_heights) if bollard else Buildings3D.street_light_transform(local,Vector2(cos(float(row[2])),-sin(float(row[2]))),chunk.ground_heights)
+			var source:Mesh=Buildings3D.merged_model("bollard",Buildings3D.BOLLARD_SCENE) if bollard else Buildings3D.street_light_mesh()
+			for batch in group.get_children():
+				if not batch is MultiMeshInstance3D or not batch.is_visible_in_tree() or batch.multimesh.mesh!=source:continue
+				for n in batch.multimesh.instance_count:
+					var transform:Transform3D=batch.global_transform*batch.multimesh.get_instance_transform(n)
+					if not transform.is_equal_approx(expected):continue
+					var rect:=Rect2();var visible:=true
+					for corner in 8:
+						var point:=transform*source.get_aabb().get_endpoint(corner)
+						visible=visible and camera.is_position_in_frustum(point)
+						var pixel:=camera.unproject_position(point);rect=Rect2(pixel,Vector2.ZERO) if corner==0 else rect.expand(pixel)
+					if not visible or rect.size.y<(35.0 if bollard else 100.0) or rect.size.x<8:continue
+					if not Rect2(Vector2.ZERO,main.get_viewport_rect().size).encloses(rect):continue
+					var blocked:=false
+					for panel:Rect2 in hud:
+						if panel.intersects(rect):blocked=true
+					var centre:=transform*source.get_aabb().get_center()
+					for other in main.map_layer._chunks.values():
+						for solid:MeshInstance3D in other.meshes_3d:
+							if not solid.is_visible_in_tree() or solid.material_override!=Buildings3D._shared["material"]:continue
+							if not _felled_occluders.has(solid.mesh):_felled_occluders[solid.mesh]=solid.mesh.generate_triangle_mesh()
+							var inverse:=solid.global_transform.affine_inverse()
+							if not _felled_occluders[solid.mesh].intersect_segment(inverse*camera.global_position,inverse*centre).is_empty():blocked=true
+					if blocked:continue
+					var errors:=[]
+					var triangles:=0
+					for surface in source.get_surface_count():triangles+=source.surface_get_array_index_len(surface)/3
+					if triangles!=(1180 if bollard else 5280):errors.append("street source triangles lost")
+					var base:Vector3=transform*(Vector3.ZERO if bollard else Buildings3D.STREET_LIGHT_BASE)
+					var ground_error:=absf(base.y-Buildings3D.ground_height(chunk.ground_heights,Vector2(base.x,base.z)))
+					if ground_error>.01:errors.append("street source base floats")
+					_urban_seen={"triangles":triangles,"surfaces":source.get_surface_count(),"ground_error_m":ground_error,"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y],"row":row,"kind":"bollard" if bollard else "street_light"}
+					if not bollard:
+						var panel:Vector3=transform*Buildings3D.STREET_LIGHT_PANEL
+						var light_error:=INF
+						var layer=layer_3d_view()
+						for k in layer._lamp_keys.size():
+							if layer._lamp_keys[k].distance_to(local)<.1:light_error=panel.distance_to(layer._street_lights[k].position)
+						var material:StandardMaterial3D=source.surface_get_material(1)
+						if material.emission_enabled!=(layer._lamp_level>.01):errors.append("street LED schedule differs")
+						if layer._lamp_level>.01 and light_error>.01:errors.append("street light detached from LED")
+						_urban_seen["light_error_m"]=light_error if is_finite(light_error) else -1.0
+						_urban_seen["artificial_level"]=layer._lamp_level
+						_urban_seen["panel_emission"]=material.emission_enabled
+					if scenario.has("street_broken"):
+						var broken_found:=false
+						for broken_chunk in main.map_layer._chunks.values():
+							for k in broken_chunk._data.get("street_lights",[]).size():
+								var broken_row:Array=broken_chunk._data.street_lights[k]
+								if Vector2(broken_row[0],broken_row[1]).distance_to(Vector2(scenario.street_broken[0],scenario.street_broken[1]))>.15:continue
+								broken_found=broken_chunk._broken.has(k)
+								var broken_local:=MapMath.point(broken_chunk._origin,broken_row[0],broken_row[1])
+								var lamp_group:Node3D=broken_chunk._dynamic_3d.get("lamps")
+								if lamp_group!=null:
+									var broken_transform:=Buildings3D.street_light_transform(broken_local,Vector2(cos(broken_row[2]),-sin(broken_row[2])),broken_chunk.ground_heights)
+									for child in lamp_group.get_children():
+										for instance in child.multimesh.instance_count:
+											if child.multimesh.get_instance_transform(instance).is_equal_approx(broken_transform):errors.append("broken lamp model remains")
+								var layer=layer_3d_view()
+								for k2 in layer._lamp_keys.size():
+									if layer._lamp_keys[k2].distance_to(broken_local)<.1 and layer._lamp_weights[k2]>.01:errors.append("broken lamp light remains")
+						if not broken_found:errors.append("broken lamp state missing")
+						_urban_seen["broken_removed"]=broken_found
+					return errors
+	return ["mapped street source not fully visible/ready"]
+
+
 func _nature_readiness(camera_3d: Camera3D, hud: Array) -> Array:
 	_nature_seen = {}
 	var errors := []
@@ -666,7 +763,7 @@ func check() -> Array:
 		return ["no state from the server yet"]
 	var missing := _hud_readiness() if scenario.has("hud_fixture") else []
 	if scenario.get("nature_profile",false) and _elapsed<30.0: missing.append("mapped-tree profile warmup")
-	if scenario.get("id","")=="cozy_vehicles_profile" and _elapsed>=30.0:
+	if (scenario.get("id","")=="cozy_vehicles_profile" or scenario.get("street_profile",false)) and _elapsed>=30.0:
 		var expected_forest:=0
 		for chunk in main.map_layer._chunks.values():
 			expected_forest+=chunk._forest_rows.size()
@@ -1638,8 +1735,13 @@ func _check_map(centre: Vector2) -> Array:
 		for c: Array in campers:
 			if absf(c[1] / c[0] - 1.0) > 0.1:
 				missing.append("camper drawn %.2f m, its row %.2f m (over 10 %%)" % [c[1], c[0]])
+	if scenario.has("street_target") or scenario.has("bollard_target"):missing.append_array(_urban_readiness(camera_3d,hud))
 	if scenario.get("nature_glb", false): missing.append_array(_nature_readiness(camera_3d,hud))
 	_counts = {"lamps_in_view": lamps, "buildings_in_view": buildings, "chunks": main.map_layer.chunk_count(), "scenery_in_view": seen}
+	if scenario.get("street_profile",false):
+		_counts["street_lamp_build_ms"]=_street_build_sections
+		_counts["street_lamps_loaded"]=main.map_layer._chunks.values().reduce(func(total,chunk):return total+chunk.street_lights.size()-chunk._broken.size(),0)
+	if not _urban_seen.is_empty():_counts["urban_street"]=_urban_seen
 	if not _nature_seen.is_empty(): _counts["cozy_nature"] = _nature_seen
 	if not reflective.is_empty(): _counts["reflective_strips"] = reflective
 	if not fox.is_empty(): _counts["fox"] = fox

@@ -55,12 +55,10 @@ func test_lamp_stands_on_ground() -> void:
 	MapChunk.prepare(grid, Vector2.ZERO)
 	var ground: Dictionary = grid["prepared"]["ground_heights"]
 	var lamp := Vector2(51.2, -10.0)
-	var verts: PackedVector3Array = B3.lamp_posts_arrays([[lamp, Vector2(1, 0)]], ground)["verts"]
-	var lowest := INF
-	for v in verts:
-		lowest = minf(lowest, v.y)
-	var pole := lamp - Vector2(1.2, 0)
-	check(absf(lowest - B3.ground_height(ground, pole)) < 0.01, "lamp base %.2f on the ground %.2f" % [lowest, B3.ground_height(ground, pole)])
+	var transform:Transform3D=B3.lamp_posts_arrays([[lamp,Vector2.RIGHT]],ground).transforms[0]
+	var base:=transform*B3.STREET_LIGHT_BASE
+	var pole:=Vector2(base.x,base.z)
+	check(absf(base.y-B3.ground_height(ground,pole))<.01,"authored lamp base on DEM")
 
 ## The highest triangle of `verts` over `at`, interpolated (the drawn top there); -INF if none.
 func _top_under(verts: PackedVector3Array, at: Vector2) -> float:

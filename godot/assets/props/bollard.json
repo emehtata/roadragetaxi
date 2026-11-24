@@ -1,0 +1,22 @@
+{
+  "name": "bollard",
+  "source": "https://grab3d.com/models/city/bollard/",
+  "download": "https://grab3d.com/dl/bollard/bollard.glb",
+  "retrieved": "2026-11-24",
+  "sha256": "69e9f116ed4880e9f1c2373c21c62b52941b70c6a98c9403e6bab36ada1f4b82",
+  "triangles": 1180,
+  "surfaces": 1,
+  "bounds_m": {
+    "size": [
+      0.200000003,
+      1.001999974,
+      0.200000003
+    ],
+    "min": [
+      -0.100000001,
+      0,
+      -0.100000001
+    ]
+  },
+  "runtime": "Uniform0.9/1.001999974, centred base on mapped DEM point. All parts retained."
+}

@@ -590,7 +590,8 @@ func update_lights_3d(view: Rect2, level: float) -> void:
 		for i in chunk.street_lights.size():
 			var at: Vector2 = chunk.street_lights[i]
 			if area.has_point(at) and not chunk._broken.has(i):
-				lamps.append([at, float(rows[i][3]) if i < rows.size() and rows[i].size() > 3 else 10.0, at.distance_squared_to(centre)])
+				var direction := Vector2(cos(float(rows[i][2])), -sin(float(rows[i][2]))) if i < rows.size() else Vector2.RIGHT
+				lamps.append([at, float(rows[i][3]) if i < rows.size() and rows[i].size() > 3 else 10.0, at.distance_squared_to(centre), Buildings3D.street_light_position(at, direction, chunk.ground_heights)])
 		var styles: Array = chunk._data.get("building_styles", [])
 		var footprints: Array = chunk._data.get("buildings", [])
 		for i in mini(styles.size(), footprints.size()):
