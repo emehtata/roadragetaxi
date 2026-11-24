@@ -58,7 +58,7 @@ def test_counter_steering_does_not_deepen_the_slide():
 def test_arcade_mode_stays_far_more_forgiving_than_simulation():
     _, arcade_drift, _ = corner(16.0, 1.0, mode="arcade")
     _, sim_drift, _ = corner(16.0, 1.0, mode="simulation")
-    assert arcade_drift < sim_drift / 3.0
+    assert arcade_drift < sim_drift * 0.75  # arcade grip is 1.15x, not the old 1.57x: less of a gap
 
 
 def test_slow_full_throttle_crawl_does_not_slide():

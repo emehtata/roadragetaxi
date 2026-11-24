@@ -84,10 +84,11 @@ _GRAVEL_SURFACES = {"gravel", "fine_gravel", "compacted", "unpaved", "dirt", "gr
 # a hard cutoff made "skid marks came too easy" and pinned the g-meter on
 # nearly every corner) - "arcade" stays additionally forgiving on top,
 # while "simulation" uses the playability-tuned surface values as written.
-# The raw table was raised for simulation-mode controllability. Reducing
-# arcade's multiplier correspondingly preserves its already-forgiving
-# effective asphalt grip and its extreme full-lock/high-speed slide case.
-PHYSICS_MODE_GRIP_MULTIPLIER = {"arcade": 1.57, "simulation": 1.0}
+# Arcade's 1.15 gives dry asphalt about 1.3 g (1.15 g x 1.15), a little above
+# simulation's 1.15 g: forgiving, but full lock at 25 m/s slides instead of
+# tracking the line (docs/specs/vehicle-airborne-physics.md; the old 1.57
+# glued the car at 1.8 g, more than road tyres give).
+PHYSICS_MODE_GRIP_MULTIPLIER = {"arcade": 1.15, "simulation": 1.0}
 # Ratios of max_grip_g (GRIP.md section 1's 0.75/0.90/1.00 for a 0.90 dry
 # max) - scaled per-surface so e.g. gravel starts warning/sliding at the
 # same *proportion* of its own (much lower) grip ceiling. Used to grade

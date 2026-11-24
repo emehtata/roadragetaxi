@@ -131,3 +131,26 @@ def test_ice_road_has_a_much_lower_grip_limit():
         current_way=ice_road, physics_mode="arcade",
     )
     assert ice_car.is_sliding is True
+
+
+def test_arcade_peak_lateral_g_bounded():
+    car = _fast_car(speed=25.0)
+    peak, slid_at = 0.0, None
+    for i in range(40):  # 2 s at 20 Hz, speed held
+        car.speed = 25.0
+        update_car_physics(car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0, dt=0.05,
+                           physics_mode="arcade")
+        peak = max(peak, abs(car.raw_lateral_g))
+        if car.is_sliding and slid_at is None:
+            slid_at = i
+    assert peak <= 1.35
+    assert slid_at is not None
+
+
+def test_arcade_low_speed_no_slide():
+    car = _fast_car(speed=8.0)
+    for _ in range(40):
+        car.speed = 8.0
+        update_car_physics(car, throttle=0.0, brake=0.0, steer_left=1.0, steer_right=0.0, dt=0.05,
+                           physics_mode="arcade")
+        assert car.is_sliding is False

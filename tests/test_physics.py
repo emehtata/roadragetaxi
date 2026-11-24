@@ -11,6 +11,7 @@ def test_a_turning_car_pivots_on_its_rear_axle_not_its_middle():
     for _ in range(60):
         rear_before = (car.x - math.cos(car.heading) * behind, car.y - math.sin(car.heading) * behind)
         heading_before = car.heading
+        car.speed = 6.0  # held: at the 12 m/s the throttle reaches, full lock is meant to slide (arcade grip 1.15)
         update_car_physics(car, throttle=0.3, brake=0.0, steer_left=1.0, steer_right=0.0, dt=1 / 30, block_offroad=False)
         rear_after = (car.x - math.cos(car.heading) * behind, car.y - math.sin(car.heading) * behind)
         move = (rear_after[0] - rear_before[0], rear_after[1] - rear_before[1])
