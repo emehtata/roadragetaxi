@@ -793,6 +793,8 @@ var _built_view := Vector2.INF
 
 ## Build either 3D meshes or flat footprints, independently of camera movement.
 func _build_2_5d() -> void:
+	if _data.get("bus_stops", []).any(func(stop): return stop.get("shelter") != null):
+		B3.prop_model_surfaces("bus_stop_shelter")
 	for kind: String in ["carousel", "swing_carousel", "ferris_wheel"]:
 		if _data.get("attractions", []).any(func(row): return row[0] == kind):
 			B3.prop_model_surfaces(kind)

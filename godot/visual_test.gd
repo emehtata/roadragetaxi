@@ -1145,6 +1145,8 @@ func _check_map(centre: Vector2) -> Array:
 	var carousel_glb := _check_prop_glb("carousel", camera_3d, screen_size, hud, missing) if scenario.has("carousel_target") else {}
 	var swing_ride_glb := _check_prop_glb("swing_carousel", camera_3d, screen_size, hud, missing) if scenario.has("swing_carousel_target") else {}
 	var ferris_wheel_glb := _check_prop_glb("ferris_wheel", camera_3d, screen_size, hud, missing) if scenario.has("ferris_wheel_target") else {}
+	var shelter_control := _check_bus_stop_control(camera_3d, screen_size, hud, missing) if scenario.has("bus_stop_bench_path") else {}
+	var shelter_glb := _check_prop_glb("bus_stop_shelter", camera_3d, screen_size, hud, missing) if scenario.has("bus_stop_shelter_target") else {}
 	var camping_glb := {}
 	if scenario.get("camping_glb",false):
 		for kind in ["caravan_with_car","caravan","tent","camper_van"]:
@@ -1757,6 +1759,8 @@ func _check_map(centre: Vector2) -> Array:
 	if not swing_ride_glb.is_empty(): _counts["swing_ride_glb"] = swing_ride_glb
 	if not ferris_wheel_glb.is_empty(): _counts["ferris_wheel_glb"] = ferris_wheel_glb
 	if not outdoor_glb.is_empty(): _counts["outdoor_glb"] = outdoor_glb
+	if not shelter_control.is_empty(): _counts["bus_stop_bench_control"] = shelter_control
+	if not shelter_glb.is_empty(): _counts["bus_stop_shelter_glb"] = shelter_glb
 	if not camping_glb.is_empty(): _counts["camping_glb"] = camping_glb
 	if not crossbuck.is_empty(): _counts["crossbuck"] = crossbuck
 	if not camp_pair.is_empty(): _counts["picnic_table" if scenario.has("picnic_table_target") else "bicycle_parking" if scenario.has("bicycle_parking_target") else "tent" if scenario.has("tent_target") else "caravan_with_car"] = camp_pair
@@ -2074,6 +2078,34 @@ func _state_timeline_summary(buffer) -> Dictionary:
 		"render_backsteps": buffer.render_backsteps, "clock_snaps": buffer.clock_snaps}
 
 
+func _check_bus_stop_control(camera: Camera3D, screen: Vector2, hud: Array, missing: Array) -> Dictionary:
+	if camera == null: return {}
+	for chunk in main.map_layer._chunks.values():
+		for stop: Dictionary in chunk._data.get("bus_stops", []):
+			if stop.get("bench") != scenario.bus_stop_bench_path: continue
+			if stop.get("shelter") != null: missing.append("bench-only stop unexpectedly has shelter")
+			if chunk._building_task >= 0: missing.append("bench control chunk building"); return {}
+			var footprint := PackedVector2Array()
+			for point: Array in stop.bench: footprint.append(MapMath.point(chunk._origin,point[0],point[1]))
+			var expected := Buildings3D.build([],[],Vector2.ZERO,[],[],{"rect":chunk._bounds_rect,"ground_heights":chunk.ground_heights,"shelters":[[footprint,"bench"]]})
+			for mesh: MeshInstance3D in chunk.meshes_3d:
+				if mesh.mesh == null or not _swing_faces_present(mesh.mesh.get_faces(),expected.deck): continue
+				if not mesh.is_visible_in_tree() or mesh.layers & camera.cull_mask == 0: missing.append("bench batch not visible")
+				var rect := Rect2()
+				for i in expected.deck.size():
+					var point: Vector3 = mesh.global_transform*expected.deck[i]
+					if not camera.is_position_in_frustum(point): missing.append("bench outside view"); break
+					var pixel := camera.unproject_position(point)
+					rect = Rect2(pixel,Vector2.ZERO) if i == 0 else rect.expand(pixel)
+				if rect.size.x < 50 or rect.size.y < 15 or not Rect2(Vector2.ZERO,screen).encloses(rect): missing.append("bench control too small or offscreen")
+				for panel: Rect2 in hud:
+					if panel.intersects(rect): missing.append("bench control under HUD")
+				return {"mapped_bench_only":true,"matched_vertices":expected.deck.size(),"rect":[rect.position.x,rect.position.y,rect.size.x,rect.size.y]}
+			missing.append("existing bench control geometry absent"); return {}
+	missing.append("mapped bench-only stop not loaded")
+	return {}
+
+
 var _prop_glb_geometry_cache := {}
 
 
@@ -2081,7 +2113,8 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if camera == null: return {}
 	var target: Array = scenario[kind+"_target"]
 	var ride := kind in ["carousel","swing_carousel","ferris_wheel"]
-	var outdoor := kind == "picnic_table"
+	var shelter := kind == "bus_stop_shelter"
+	var outdoor := kind == "picnic_table" or shelter
 	var camping := kind in ["caravan_with_car","caravan","tent","camper_van"]
 	var layer = layer_3d_view()
 	var triangles := 17858 if kind == "spring_rider" else (15988 if kind == "slide" else 19740)
@@ -2094,16 +2127,26 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 	if outdoor:
 		triangles=5544
 		material_count=1
+	if shelter: triangles = 10972; material_count = 5
 	if camping:
 		triangles={"caravan_with_car":38695,"caravan":19387,"tent":14428,"camper_van":45436}[kind]
 		material_count={"caravan_with_car":36,"caravan":18,"tent":3,"camper_van":9}[kind]
 	for chunk in main.map_layer._chunks.values():
-		for row: Array in chunk._data.get("attractions" if ride else "scenery_objects", []):
+		for row in chunk._data.get("bus_stops" if shelter else "attractions" if ride else "scenery_objects", []):
 			var at := Vector2.ZERO
 			var angle := 0.0
 			var scale := 1.0
+			var shelter_grounding := {}
 			var loop := PackedVector2Array()
-			if ride:
+			if shelter:
+				if row.get("shelter") == null or Vector2(row.shelter[0][0],row.shelter[0][1]).distance_to(Vector2(target[0],target[1])) > 0.01: continue
+				if row.shelter != scenario.get("bus_stop_shelter_path",[]): missing.append("shelter footprint differs from mapped row")
+				for point: Array in row.shelter: loop.append(MapMath.point(chunk._origin,point[0],point[1]))
+				var fit := Buildings3D.shelter_placement(loop)
+				if fit.is_empty(): missing.append("invalid mapped shelter footprint"); continue
+				at = fit.at; angle = fit.angle; scale = fit.scale
+				if row.get("bench") != null: missing.append("unexpected duplicate mapped stop bench")
+			elif ride:
 				if row[0]!=kind or row[1].is_empty() or Vector2(row[1][0][0],row[1][0][1]).distance_to(Vector2(target[0],target[1]))>0.01:continue
 				if row[1]!=scenario.get(kind+"_path",[]):missing.append(kind+" path differs from authoritative mapped row")
 				for point:Array in row[1]:loop.append(MapMath.point(chunk._origin,point[0],point[1]))
@@ -2122,8 +2165,21 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 				missing.append(kind+" chunk meshes still building")
 				return {}
 			var id := "%s/%s/%s/%s"%[chunk.get_instance_id(),kind,chunk._mesh_build,chunk.meshes_3d[0].get_instance_id()]
+			if shelter:
+				var found_placement := false
+				for mesh: MeshInstance3D in chunk.meshes_3d:
+					for fit: Dictionary in mesh.get_meta("shelter_placements",[]):
+						if (fit.at as Vector2).distance_to(at) > 0.001: continue
+						if absf(angle_difference(fit.angle,angle)) > 0.001 or absf(fit.scale-scale) > 0.00001: missing.append("shelter placement differs from ordered footprint")
+						shelter_grounding = fit; found_placement = true
+				if not found_placement: missing.append("shelter final ground placement absent"); return {}
 			if not _prop_glb_geometry_cache.has(id):
-				var expected := Buildings3D.build([],[],Vector2.ZERO,[],[],{"attractions":[[kind,loop]] if ride else [],"props":[] if ride else [[at,angle,kind,float(row[4]) if kind=="camper_van" else Buildings3D.PROPS[kind][0]]],"ground_heights":chunk.ground_heights,"rect":chunk._bounds_rect})
+				var expected := Buildings3D.build([],[],Vector2.ZERO,[],[],{"shelters":[[loop,"shelter"]] if shelter else [],"attractions":[[kind,loop]] if ride else [],"props":[] if ride or shelter else [[at,angle,kind,float(row[4]) if kind=="camper_van" else Buildings3D.PROPS[kind][0]]],"ground_heights":chunk.ground_heights,"rect":chunk._bounds_rect})
+				if shelter:
+					for part: Dictionary in expected.prop_surfaces.values():
+						for i in part.verts.size():
+							var point := Vector2(part.verts[i].x,part.verts[i].z)
+							part.verts[i].y += Buildings3D.shelter_surface_lift(shelter_grounding.ground,point,shelter_grounding.draped)
 				var nodes := []
 				var faces := PackedVector3Array()
 				var matched := true
@@ -2174,20 +2230,23 @@ func _check_prop_glb(kind: String, camera: Camera3D, screen: Vector2, hud: Array
 			if kind=="caravan":probes=[Vector3(0,1.8,0),Vector3(2.5,0.5,0),Vector3(-0.4,0.2,0.8)]
 			if kind=="camper_van":probes=[Vector3(1.4,1.0,0),Vector3(-1.0,1.8,0),Vector3(1.3,0.1,0.8)]
 			if kind == "seesaw": probes = [Vector3(-0.60,0.18,0),Vector3(0.60,0.45,0),Vector3(0,0.15,0),Vector3(0,0.29,0)]
+			if shelter: probes=[Vector3(0,2.4,0),Vector3(0,.43,-.4),Vector3(0,1.1,-.66),Vector3(-1.4,1,.1)]
 			if kind=="picnic_table":probes=[Vector3(0,0.73,0),Vector3(0,0.42,0.6),Vector3(0,0.42,-0.6),Vector3(0,0.25,0)]
 			var foot_probes := {}
 			for local: Vector3 in cached.feet:
 				if ride or camping or outdoor:foot_probes[Vector2(signf(local.x),signf(local.z))]=local+Vector3.UP*0.03
 				else:probes.append(local+Vector3.UP*0.03)
 				var foot: Vector3 = placement*local
-				foot.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))
-				foot_error = maxf(foot_error,absf((frame.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false)))
+				var surface_lift := Buildings3D.shelter_surface_lift(shelter_grounding.ground,Vector2(foot.x,foot.z),shelter_grounding.draped) if shelter else 0.0
+				foot.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(foot.x,foot.z))+surface_lift
+				foot_error = maxf(foot_error,absf((frame.global_transform*foot).y-main.map_layer.deck_height(Vector2(foot.x,foot.z),0,false)-surface_lift))
 			probes.append_array(foot_probes.values())
 			if foot_error > 0.01: missing.append(kind+" feet floating or buried")
 			# Recognizable features and ground supports must be clear of surrounding drawn geometry.
 			for local: Vector3 in probes:
 				var point: Vector3 = placement*local
 				point.y += Buildings3D.ground_height(chunk.ground_heights,Vector2(point.x,point.z))
+				if shelter: point.y += Buildings3D.shelter_surface_lift(shelter_grounding.ground,Vector2(point.x,point.z),shelter_grounding.draped)
 				point = frame.global_transform*point
 				for other in main.map_layer._chunks.values():
 					for solid: MeshInstance3D in other.meshes_3d:
