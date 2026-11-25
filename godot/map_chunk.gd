@@ -51,6 +51,7 @@ var _data: Dictionary = {}
 var _origin := Vector2.ZERO
 var _bounds := PackedVector2Array()  # chunk rectangle in layer coordinates (clipping)
 var ground_heights := {}  # the DEM ground grid (prepare; Buildings3D.ground_height), empty: flat
+var ground_bumps: Array = []  # speed bumps as Buildings3D.bumps_of rows: the drawn shape, and the height cars ride over
 var bridge_ends := PackedVector2Array()  # step 5: where this chunk's bridges meet lower roads (bridge_ends_of)
 var _dynamic_3d := {}  # --outdoor-3d: "trees", "railings" -> their 3D node, rebuilt as the 2D layer would redraw
 var _bounds_rect := Rect2()
@@ -263,6 +264,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 		_px_layers.append(_signs)
 	_puddle_spots = prepared["puddle_spots"]
 	bridge_ends = prepared.get("bridge_ends", PackedVector2Array())
+	ground_bumps = prepared.get("bumps", [])
 	ground_heights = prepared.get("ground_heights", {})
 	_water_ripple_spots = prepared["water_ripple_spots"]
 	Perf.add("chunk_layers", Time.get_ticks_usec() - started)
@@ -336,7 +338,7 @@ static func prepare(message: Dictionary, origin: Vector2) -> void:
 			"cols": int(raw["cols"]), "heights": PackedFloat32Array(raw["heights"])}
 	message["prepared"] = {"ground_heights": grid, "origin": origin, "bounds_rect": bounds_rect, "bounds": bounds, "drivable_roads": drivable,
 		"roads_by_z": roads_by_z, "snow_cells": snow_cells, "street_lights": lights, "light_cells": cells, "puddle_spots": puddles, "bridge_ends": bridge_ends,
-		"water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
+		"bumps": B3.bumps_of(message.get("speed_bumps", []), origin), "water_ripple_spots": water_ripple_spots(message.get("waters", []), origin), "points": points,
 		# Rasterised here, on the parse worker: on the main thread it was a 60-115 ms hitch per forest chunk.
 		"forest_mask": null, "forest_trees": []}
 	if message.get("landuse", []).any(_is_forest) and (forest_canopy or (outdoor_3d and buildings_3d)):
@@ -845,11 +847,7 @@ func _build_2_5d() -> void:
 			for i in count:
 				var centre: Vector2 = at + across * (-(count - 1) * 0.9 / 2.0 + i * 0.9)
 				stripes.append([centre - along * float(c[4]) / 2.0, centre + along * float(c[4]) / 2.0])
-		var bumps: Array = []
-		for bump in _data.get("speed_bumps", []):
-			var at := MapMath.point(_origin, bump[0], bump[1])
-			var along: Vector2 = Vector2(cos(bump[2]), -sin(bump[2])) * float(Detail.BUMP_LENGTHS.get(str(bump[4]), 0.6)) / 2.0
-			bumps.append([at - along, at + along, float(bump[3]) / 2.0])
+		var bumps: Array = ground_bumps
 		var puddles: Array = []  # [centre, radius, rim shape, reveal wetness]: the road shader grows them with the weather
 		for spot in _puddle_spots:
 			if int(spot.get("z", 1)) == 1:

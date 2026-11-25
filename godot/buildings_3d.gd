@@ -2705,7 +2705,6 @@ const PUDDLE_M := 0.032
 const MARKING_M := 0.036
 const CURB_M := 0.12  # kerbs and traffic islands stand this high
 const CURB_HALF_M := 0.08
-const BUMP_M := 0.07
 const RAIL_M := 0.03  # ground railways' ballast, over the roads they cross (a level crossing)
 const RAIL_BALLAST_HALF_M := 1.65
 enum { ROAD_SURFACE, ROAD_WATER, ROAD_PUDDLE, ROAD_FOAM }  # road.gdshader's UV.x
@@ -2769,7 +2768,7 @@ static func _ground(out: Dictionary, ground: Dictionary) -> void:
 	for stripe: Array in ground.get("stripes", []):  # zebra stripes, 0.5 m wide
 		_ribbon(out, stripe[0], stripe[1], 0.25, 0.0, MARKING_M, Color8(245, 245, 245))
 	for bump: Array in ground.get("bumps", []):
-		_raised_strip(out, bump[0], bump[1], bump[2], ROAD_M, BUMP_M, Color8(45, 42, 40), "road")
+		_bump(out, bump, not ground.get("ground_heights", {}).is_empty())
 	for puddle: Array in ground.get("puddles", []):
 		_puddle(out, puddle[0], puddle[1], puddle[2], puddle[3])
 	for island: Array in ground.get("islands", []):
@@ -2796,22 +2795,65 @@ const DECK_COLOR := Color8(150, 150, 146)
 const BALLAST := Color8(120, 112, 100)
 
 
+## Speed-bump shapes (src/theroadragetrip/vertical.py BUMP_PROFILES, the same numbers): kind -> [height, length along the road,
+## ramp length (0: a raised cosine, else linear ramps up to a flat top), width cap (0: the road's width)].
+const BUMP_PROFILES := {"bump": [0.07, 0.6, 0.0, 0.0], "hump": [0.10, 3.7, 0.0, 0.0], "cushion": [0.08, 2.5, 0.0, 1.8], "table": [0.10, 4.6, 1.2, 0.0]}
+
+
+## Height of a `kind` bump `s` m from its start along the road (0 outside it).
+static func bump_profile(kind: String, s: float) -> float:
+	var shape: Array = BUMP_PROFILES.get(kind, BUMP_PROFILES["bump"])
+	var length: float = shape[1]
+	if s <= 0.0 or s >= length:
+		return 0.0
+	if float(shape[2]) > 0.0:
+		return float(shape[0]) * minf(minf(s, length - s), float(shape[2])) / float(shape[2])
+	return 0.5 * float(shape[0]) * (1.0 - cos(TAU * s / length))
+
+
+## A chunk's speed_bumps rows as the rows bump_height and the bump mesh read: [start, end (along the road), half width, kind].
+static func bumps_of(rows: Array, origin: Vector2) -> Array:
+	var out := []
+	for row in rows:
+		var shape: Array = BUMP_PROFILES.get(str(row[4]), BUMP_PROFILES["bump"])
+		var along := Vector2(cos(row[2]), -sin(row[2])) * float(shape[1]) / 2.0
+		var at := MapMath.point(origin, row[0], row[1])
+		var width := float(row[3]) if float(shape[3]) == 0.0 else minf(float(row[3]), float(shape[3]))
+		out.append([at - along, at + along, width / 2.0, str(row[4])])
+	return out
+
+
+## The drawn bumps' extra road height at `at`, from the chunk's own `bumps` (bumps_of): the profile of the one it is on.
+static func bump_height(at: Vector2, bumps: Array) -> float:
+	var top := 0.0
+	for bump: Array in bumps:
+		var a: Vector2 = bump[0]
+		var along: Vector2 = bump[1] - a
+		var length := along.length()
+		var p := at - a
+		var s := p.dot(along) / length
+		if s > 0.0 and s < length and absf(p.cross(along) / length) <= float(bump[2]):
+			top = maxf(top, bump_profile(str(bump[3]), s))
+	return top
+
+
 ## A deck's height at `at` on a layer-`layer` bridge: full height, eased down
 ## to the ground over RAMP_M toward the nearest end (`ends`: where bridge ways
 ## meet a lower road, map_chunk.prepare). Negative layers: tunnels, below ground.
 ## `grid`: the chunk's ground_heights (map_chunk.prepare) - the deck rides on the DEM ground.
-static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
-	return road_surface_height(at, layer, ends, grid)
+static func deck_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}, bumps := []) -> float:
+	return road_surface_height(at, layer, ends, grid, bumps)
 
 
 ## The drawn road (or bridge deck road strip) top at `at`, as build() lifts and drapes it:
 ## where vehicles and pedestrians on roads stand. Tunnels (layer < 0) keep deck_base.
 ## ponytail: layer 0 uses a mid-rank road height (ranks differ by <= 0.016 m), the deck skips its rank lift too.
-static func road_surface_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
+static func road_surface_height(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}, bumps := []) -> float:
 	if layer < 0:
 		return deck_base(at, layer, ends, grid)
 	var base := ROAD_M + 0.008 if layer == 0 else deck_base(at, layer, ends)
-	return base if grid.is_empty() else road_lift(base) + terrain_mesh_height(grid, at)  # flat: build() skips the drape
+	var bump := bump_height(at, bumps) if layer == 0 and not bumps.is_empty() else 0.0  # speed bumps: surface roads only
+	return base + bump if grid.is_empty() else road_lift(base) + terrain_mesh_height(grid, at) + bump  # flat: build() skips the drape
 
 
 ## The raw deck/ramp height plus the bilinear ground (no road lift): the bridge mesh and things on terrain.
@@ -3950,7 +3992,52 @@ static func _signed_area(polygon: PackedVector2Array) -> float:
 	return area * 0.5
 
 
-## A low box from `a` to `b`, `half` either side: a kerb or a speed bump.
+## A speed bump (bumps_of row) as its profile: cross-sections along the road, each a strip of two triangles between its heights,
+## walls down both sides. Its top is where road_surface_height puts the car: the road's mid-rank top plus bump_profile (on a DEM
+## drape the mesh height is the one road_lift turns into road_lift(top) + the profile).
+static func _bump(out: Dictionary, bump: Array, draped: bool) -> void:
+	var a: Vector2 = bump[0]
+	var along: Vector2 = bump[1] - a
+	var length := along.length()
+	var u := along / length
+	var side := Vector2(-u.y, u.x) * float(bump[2])
+	var shape: Array = BUMP_PROFILES.get(str(bump[3]), BUMP_PROFILES["bump"])
+	var cuts := []  # a ramped table: 12 pieces up, one flat top, 12 down (the drape's lift kinks at 5 cm: a long piece misses it by mm)
+	var ramp: float = shape[2]
+	var n := clampi(ceili(length / 0.25), 8, 16) if ramp == 0.0 else 12
+	for i in n + 1:
+		cuts.append(length * i / n if ramp == 0.0 else ramp * i / n)
+	if ramp > 0.0:
+		for i in n + 1:
+			cuts.append(length - ramp + ramp * i / n)
+	var color := Color8(45, 42, 40)
+	var base := ROAD_M + 0.008
+	var lifted := road_lift(base)
+	var prev_top := -1.0
+	for i in cuts.size():
+		var h := bump_profile(str(bump[3]), cuts[i])
+		var top := (lifted + h) / DEM_GAP_SCALE if draped and lifted + h < DEM_GAP_SCALE * 0.05 else lifted + h - DEM_GAP_LIFT if draped else base + h
+		var at: Vector2 = a + u * cuts[i]
+		if i > 0:
+			var p: Vector2 = a + u * cuts[i - 1]
+			var corners := [to_3d(p - side, prev_top), to_3d(at - side, top), to_3d(at + side, top), to_3d(p + side, prev_top)]
+			_ground_tri3(out, corners[0], corners[1], corners[2], color)
+			_ground_tri3(out, corners[0], corners[2], corners[3], color)
+			for k: float in [-1.0, 1.0]:
+				_ground_wall(out, p + side * k, at + side * k, ROAD_M, prev_top, color, side * k, "road", top)
+		prev_top = top
+
+
+## One triangle of 3D points, wound clockwise as seen from +y like _ground_tri.
+static func _ground_tri3(out: Dictionary, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
+	if (b - a).cross(c - a).y > 0.0:
+		var t := b
+		b = c
+		c = t
+	_ground_push(out, "road", a, b, c, color, Vector2.ZERO, Vector2.ZERO)
+
+
+## A low box from `a` to `b`, `half` either side: a kerb.
 static func _raised_strip(out: Dictionary, a: Vector2, b: Vector2, half: float, bottom: float, top: float, color: Color, key: String) -> void:
 	var along := (b - a).normalized()
 	var side := Vector2(-along.y, along.x) * half
@@ -3963,8 +4050,9 @@ static func _raised_strip(out: Dictionary, a: Vector2, b: Vector2, half: float, 
 
 
 ## A vertical face from p to q, facing `outward` (on the ground plan).
-static func _ground_wall(out: Dictionary, p: Vector2, q: Vector2, bottom: float, top: float, color: Color, outward: Vector2, key: String) -> void:
-	for tri in [[to_3d(p, bottom), to_3d(q, bottom), to_3d(q, top)], [to_3d(p, bottom), to_3d(q, top), to_3d(p, top)]]:
+static func _ground_wall(out: Dictionary, p: Vector2, q: Vector2, bottom: float, top: float, color: Color, outward: Vector2, key: String, top_q := NAN) -> void:
+	var q_top := top if is_nan(top_q) else top_q  # a sloped top: `top` over p, `top_q` over q
+	for tri in [[to_3d(p, bottom), to_3d(q, bottom), to_3d(q, q_top)], [to_3d(p, bottom), to_3d(q, q_top), to_3d(p, top)]]:
 		var a: Vector3 = tri[0]
 		var b: Vector3 = tri[1]
 		var c: Vector3 = tri[2]

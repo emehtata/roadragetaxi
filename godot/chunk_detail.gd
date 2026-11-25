@@ -12,7 +12,6 @@ const GUARDRAIL_COLOR := Color8(196, 200, 204)
 const HALF_GAUGE := 1.435 / 2.0
 const HALF_TIE := 2.6 / 2.0
 const TIE_SPACING := 2.0
-const BUMP_LENGTHS := {"table": 2.2, "bump": 0.6, "cushion": 0.4, "hump": 0.6}
 const B3 := preload("res://buildings_3d.gd")
 const OPEN_ROOF := Color8(138, 145, 148, 185)
 const OPEN_ROOF_EDGE := Color8(65, 69, 71, 235)
@@ -510,11 +509,10 @@ static func draw_road_features(chunk, node: Node2D) -> void:
 			stripes.append_array(PackedVector2Array([centre - along * float(c[4]) / 2.0, centre + along * float(c[4]) / 2.0]))
 	if not stripes.is_empty():
 		node.draw_multiline(stripes, Color8(245, 245, 245), maxf(chunk._px(1.0), 0.5))
-	for b in chunk._data.get("speed_bumps", []):
-		var at := MapMath.point(chunk._origin, b[0], b[1])
-		var along: Vector2 = Vector2(cos(b[2]), -sin(b[2])) * float(BUMP_LENGTHS.get(str(b[4]), 0.6)) / 2.0
-		var across: Vector2 = Vector2(-along.y, along.x).normalized() * float(b[3]) / 2.0
-		var bump := PackedVector2Array([at - along - across, at + along - across, at + along + across, at - along + across])
+	for b in chunk.ground_bumps:  # [start, end, half width, kind] (Buildings3D.bumps_of)
+		var along: Vector2 = (b[1] - b[0]).normalized()
+		var across: Vector2 = Vector2(-along.y, along.x) * float(b[2])
+		var bump := PackedVector2Array([b[0] - across, b[1] - across, b[1] + across, b[0] + across])
 		if _valid(bump):
 			node.draw_colored_polygon(bump, Color8(45, 42, 40))
 
