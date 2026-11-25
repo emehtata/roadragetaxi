@@ -632,6 +632,7 @@ class PlayerPedestrian:
     radius_m: float = 0.55
     way: Optional[Way] = None
     velocity: Tuple[float, float] = (0.0, 0.0)  # first-person walking (simulation.fps_walk_step)
+    layer: int = 0  # the road layer under the player (a bridge > 0): the 3D view stands the figure on its deck
 
 
 class PedestrianManager:

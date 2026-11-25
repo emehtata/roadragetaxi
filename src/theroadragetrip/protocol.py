@@ -264,7 +264,7 @@ def player_walker_dict(ped) -> dict:
     vx, vy = getattr(ped, "velocity", (0.0, 0.0))
     moving = math.hypot(vx, vy) > 0.2
     return {"x": ped.x, "y": ped.y, "heading": ped.heading, "speed": abs(ped.speed),
-            "facing": math.atan2(vy, vx) if moving else ped.heading}
+            "facing": math.atan2(vy, vx) if moving else ped.heading, "layer": getattr(ped, "layer", 0)}
 
 
 def _pedestrian_to_dict(ped, residents=None, santa_day=None, person: bool = True) -> dict:

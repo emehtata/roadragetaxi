@@ -38,6 +38,8 @@ func run() -> void:
 	test_far_bodies_stay_level()
 	test_train_on_dem()
 	test_ferry_on_water()
+	test_animals_on_dem()
+	test_walker_layer()
 	layer.free()
 	print("body_pose: %d failures" % failures)
 	quit(1 if failures else 0)
@@ -194,3 +196,54 @@ func test_ferry_on_water() -> void:
 	print("ferry %.3f m, drawn water %.3f m" % [ferry, top])
 	check(top > -INF and absf(ferry - top) <= 0.1, "ferry %.3f m vs the drawn water surface %.3f m" % [ferry, top])
 	map.free()
+
+
+## Elves, dogs and wildlife stand on the DEM ground (deck_height(at, 0, false)); flying animals add their offset.
+func test_animals_on_dem() -> void:
+	B3.current = renderer
+	B3.view_centre = Vector2(200, -100)
+	_ground(0.06)
+	var wild := GDScript.new()
+	wild.source_code = "extends Node\nvar animals := []\nfunc coat(_s): return Color.GRAY\n"
+	wild.reload()
+	layer.wildlife = wild.new()
+	layer.wildlife.set("animals", [{"id": 1, "position": Vector2(150, -60), "species": "pigeon", "state": "FEED", "heading": 0.0},
+		{"id": 2, "position": Vector2(300, -90), "species": "gull", "state": "FLY", "heading": 0.0}])
+	layer._frame = {"a": {}, "b": {}, "t": 0.0}
+	layer.elves = PackedVector2Array([Vector2(250, -40)])
+	layer._dog_rows = [[Vector2(100, -30), Vector2(110, -30), 0.0, {"size": "small"}]]
+	renderer.begin_cars()
+	layer._people_3d()
+	var stand := B3.ROAD_M + 0.016
+	var elf: Transform3D = renderer._car_nodes[0][0].transform
+	check(absf(elf.origin.y - stand - layer.deck_height.call(Vector2(250, -40), 0, false)) < 0.001, "an elf stands on the ground: y %.3f" % elf.origin.y)
+	var rows := 0
+	for list: Array in renderer._animal_rows.values():
+		for row: Array in list:
+			var t: Transform3D = row[5]
+			var ground: float = layer.deck_height.call(Vector2(t.origin.x, t.origin.z), 0, false)
+			var flying: bool = row[0] == "gull"
+			var lift := t.origin.y - stand - ground
+			print("animal row %s: %.4f m over the ground (flying %s)" % [row[0], lift, flying])
+			check(lift >= -0.001 and (lift < 0.001 if not flying else lift > 2.0), "%s: %.3f m over the ground (flying %s)" % [row[0], lift, flying])
+			rows += 1
+	check(rows >= 4, "dog, pigeons and gulls were placed (%d)" % rows)
+	renderer.end_cars()
+	layer.wildlife = null
+
+
+## The walking player's layer: audited, it was dropped (the figure stood on layer 0, under a deck); now carried.
+func test_walker_layer() -> void:
+	B3.current = renderer
+	var seen := []
+	layer.deck_height = func(at: Vector2, lay: int, road := true) -> float:
+		seen.append(lay)
+		return 6.0 * lay
+	var walker := Entities.player_walker({"speed": 0.0, "layer": 1})
+	check(walker["layer"] == 1 and Entities.player_walker({"speed": 0.0})["layer"] == 0, "player_walker carries the server's layer")
+	layer._frame = {"a": {}, "b": {}, "t": 0.0}
+	layer._people_rows = [[Vector2(10, -10), 0.0, walker, 0.0]]
+	renderer.begin_cars()
+	layer._people_3d()
+	check(seen.has(1) and absf(renderer._car_nodes[0][0].transform.origin.y - 6.0 - B3.ROAD_M - 0.016) < 0.001, "the walker stands on the layer-1 deck (%s)" % [seen])
+	renderer.end_cars()

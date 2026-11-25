@@ -122,8 +122,8 @@ var _vertical := VehicleVertical.new()  # the player's taxi: airborne arc over c
 var _player_speed := 0.0
 var air_height := 0.0  # m the player's taxi is above the road this frame (0 on it)
 var _driven := false  # drawing the player's own taxi (NPC taxis are is_taxi too)
-var deck_height := func(_at: Vector2, _layer: int) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var _tilts := {}  # body id (or "taxi") -> Vector2(pitch, roll) of its 3D body, eased (body_pose)
+var deck_height := func(_at: Vector2, _layer: int, _road := true) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 var smoke_enabled := true
@@ -2203,11 +2203,11 @@ func _people_3d() -> void:
 			str(ped.get("costume", "")), float(deck_height.call(row[0], int(ped.get("layer", 0)))),
 			absi(hash(ped.get("id", ped.get("color", [])))) % 8, winter, beard_style(ped), bool(ped.get("cart", false)))
 	for at in elves:
-		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf")
+		b3.person(at, -PI / 2.0, Color8(190, 30, 35), "standing", ELF_RADIUS_M / 0.45, "elf", float(deck_height.call(at, 0, false)))
 	for row in _dog_rows:
 		var dog: Dictionary = row[3]
 		b3.animal(row[1], row[2], "dog", _rgb(dog.get("color", [120, 90, 60])), "feed" if dog.get("sniffing", false) else "stand",
-			{"small": 0.6, "medium": 0.8, "large": 1.0}.get(str(dog.get("size", "medium")), 0.8))
+			{"small": 0.6, "medium": 0.8, "large": 1.0}.get(str(dog.get("size", "medium")), 0.8), float(deck_height.call(row[1], 0, false)))
 	_people_rows.clear()
 	_dog_rows.clear()
 	elves = PackedVector2Array()
@@ -2224,7 +2224,7 @@ func _people_3d() -> void:
 		for member in members:
 			var offset := Vector2.ZERO if member == 0 else Vector2.from_angle(float(int(creature["id"]) * 2 + member * 2)) * (1.5 + member * 0.8)
 			b3.animal(creature["position"] + offset, -float(creature["heading"]), species, wildlife.coat(species), pose, 1.0,
-				2.5 + 0.4 * sin(_clock * 5.0 + member) if flying else 0.0)
+				float(deck_height.call(creature["position"] + offset, 0, false)) + (2.5 + 0.4 * sin(_clock * 5.0 + member) if flying else 0.0))
 
 
 ## A person's 3D pose from their animation state: a walking stride by the
@@ -2238,7 +2238,7 @@ const WALK_POSES_PER_S := 10.5
 ## shared person body, standing, walking, or running at sprint speed.
 static func player_walker(walker: Dictionary) -> Dictionary:
 	var speed := float(walker.get("speed", 0.0))
-	return {"color": [255, 217, 64], "animation_state": "walking" if speed > 0.2 else "standing", "speed": speed, "id": "player"}
+	return {"color": [255, 217, 64], "animation_state": "walking" if speed > 0.2 else "standing", "speed": speed, "id": "player", "layer": int(walker.get("layer", 0))}
 
 
 static func person_pose(ped: Dictionary, animation_time: float) -> String:

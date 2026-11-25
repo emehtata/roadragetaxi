@@ -81,3 +81,12 @@ def test_the_walker_slides_along_a_diagonal_wall():
     from theroadragetrip.simulation import walk_blocked_by_walls
     x, y = walk_blocked_by_walls(4.99, 4.99, 0.1, 0.0, lambda px, py: px + py > 10.0)  # a 45 degree facade ahead-left
     assert x > 4.99 and y < 4.99 and x + y <= 10.0
+
+
+def test_the_walker_row_carries_its_layer():
+    """terrain-following-bodies.md audit: the walking player's row had no layer, so the 3D figure stood on the ground under a deck."""
+    from theroadragetrip.protocol import player_walker_dict
+    ped = PlayerPedestrian(0.0, 0.0)
+    assert player_walker_dict(ped)["layer"] == 0
+    ped.layer = 1
+    assert player_walker_dict(ped)["layer"] == 1

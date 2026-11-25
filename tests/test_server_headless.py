@@ -1317,6 +1317,27 @@ def test_snapshot_carries_the_pbf_fallback_notice(tmp_path, monkeypatch):
     assert "/x/finland-latest.osm.pbf" in notice and "Overpass" in notice
 
 
+def test_walking_player_layer_follows_the_deck_under_it(tmp_path, monkeypatch):
+    """terrain-following-bodies.md audit: the walker stands on a bridge deck while on it and on the ground off its edge."""
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    deck = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7, layer=1, is_bridge=True)
+    server.world.ways, server.world.roadworks = [deck], []
+    server.world.spatial_grid = SpatialWayGrid(server.world.ways)
+    ped = server.world.player_pedestrian
+    ped.x, ped.y, ped.layer = 1_000_100.0, 1_000_000.0, 0
+    server._on_foot = True
+    server._latest_command = PlayerCommand()
+    server.tick(1 / 30)
+    assert _state(server)["player_pedestrian"]["layer"] == 1
+    ped.y = 1_000_100.0  # off the deck's edge, no road there
+    server.tick(1 / 30)
+    assert _state(server)["player_pedestrian"]["layer"] == 0
+
+
 def test_the_tick_hands_the_npc_manager_the_worlds_bumps(tmp_path, monkeypatch):
     """terrain-following-bodies.md: the seam between simulation.advance_simulation and the NPC drivers' speed-bump cap."""
     from types import SimpleNamespace

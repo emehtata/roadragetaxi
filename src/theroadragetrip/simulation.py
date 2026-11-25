@@ -31,8 +31,10 @@ from .physics import (
     STEER_RATE,
     STEER_SPEED_FACTOR,
     get_current_road_at_car,
+    get_road_layer_at_point,
     is_car_colliding_with_bridge_edge,
     is_car_fully_in_water,
+    is_point_on_road,
     SINK_S,
     pull_car_inside_bridge_edge,
     respawn_car,
@@ -228,6 +230,7 @@ def apply_enter_exit_vehicle(car, player_pedestrian, on_foot: bool, audio, taxi_
             return False
         player_pedestrian.x, player_pedestrian.y = spot
         player_pedestrian.heading = car.heading
+        player_pedestrian.layer = car.layer  # stepping out onto a bridge deck stands on it
         car.speed = 0.0  # the engine keeps running (idling) until E turns it off
         audio.play_group("vehicle.door_open")
         return True
@@ -397,6 +400,12 @@ def advance_simulation(
             player_pedestrian.x, player_pedestrian.y, step_x, step_y, pedestrian_mgr._point_inside_building,
         )
 
+    if on_foot:  # a bridge deck or the ground under the walker (the 3D figure stands on it)
+        layer = get_road_layer_at_point(
+            player_pedestrian.x, player_pedestrian.y, player_pedestrian.layer, ways=ways, spatial_grid=spatial_grid, heading=player_pedestrian.heading)
+        if layer != 0 and not is_point_on_road(player_pedestrian.x, player_pedestrian.y, ways=ways, spatial_grid=spatial_grid, layer=layer):
+            layer = 0  # stepped off the deck's edge: the ground
+        player_pedestrian.layer = layer
     audio.player_position = (car.x, car.y)  # where the taxi's own sounds come from
     immobilized = water_elapsed > 0.0  # sinking: no driving out
     score_at_start = taxi_mgr.total_score

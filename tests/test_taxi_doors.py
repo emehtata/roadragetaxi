@@ -62,3 +62,10 @@ def test_no_getting_in_beyond_the_drivers_door_or_beside_a_moving_taxi():
     car.speed = 3.0
     assert apply_enter_exit_vehicle(car, PlayerPedestrian(*door), True, AUDIO) is True
     assert car.speed == 3.0
+
+
+def test_getting_out_on_a_bridge_stands_on_its_deck_layer():
+    """terrain-following-bodies.md: the walker's layer starts as the taxi's (the 3D figure stands on the deck)."""
+    car, ped = _car(layer=1), PlayerPedestrian(0.0, 0.0)
+    assert apply_enter_exit_vehicle(car, ped, False, AUDIO) is True
+    assert ped.layer == 1
