@@ -44,7 +44,7 @@ from .physics import (
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
-from .vertical import world_bump_field
+from .vertical import dem_step_m, world_bump_field, world_ground_at
 from .viewport import get_viewport_bounds
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
@@ -557,6 +557,9 @@ def advance_simulation(
                 hard_at=deck,  # a ferry's steel deck, not the mud under the water
                 waters=waters if on_surface else None,
                 lake_ice_holds=getattr(world, "lake_ice_holds", False),
+                ground_at=world_ground_at(world) if on_surface else None,  # the arc over a crest (vertical.py)
+                bump_field=world_bump_field(world) if on_surface else None,  # and over a mapped speed bump
+                dem_step_m=dem_step_m(getattr(world, "dem", None)),
             )
         car.braking = brake > 0.0 and car.speed > 0.05
         if world.level_transitions.blocks_entry(car, previous_position, approach_way):

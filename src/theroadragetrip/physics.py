@@ -7,6 +7,7 @@ from .fuel import FUEL_TANK_CAPACITY_L, INITIAL_FUEL_L
 from .geo import angle_diff, clamp, closest_point_and_dist_to_segment, compute_bbox, dist_point_to_segment, point_in_polygon
 from .map_level import on_map_level
 from .performance import advance_chunked
+from .vertical import WHEELBASE_RATIO, BumpFlight, TerrainFlight
 
 # Car physics (arcade)
 ACCEL = 4.6  # m/s^2; peak forward acceleration from rest
@@ -14,6 +15,7 @@ REVERSE_ACCEL = 2.5  # m/s^2; slower acceleration while reversing
 GEAR_CHANGE_S = 0.5  # stopped by braking (or by throttle from reverse): this long before moving the other way
 BRAKE = 28.0  # m/s^2
 FRICTION = 6.0  # m/s^2
+AIR_DRAG = 0.4  # m/s^2: the only force on a car in the air (no tyre force: steer, throttle and brake do nothing)
 STEER_RATE = 2.6  # rad/s at low speed
 STEER_SPEED_FACTOR = 0.10  # less steering at higher speed
 MAX_SPEED = 210.0 / 3.6  # m/s (210 km/h)
@@ -238,6 +240,9 @@ class Car:
     length_m: float = 4.0  # length in meters
     width_m: float = 1.8  # width in meters
     engine_on: bool = True  # engine runs only while the player is in the car
+    airborne: bool = False  # off the ground over a crest or bump (vertical.py): no steering, throttle or braking
+    air_height: float = 0.0  # m above the road while airborne (the client draws it)
+    land_bump: float = 0.0  # 1 at a hard landing, decays to 0
     throttle: float = 0.0  # the last frame's throttle (0..1), for the exhaust
     time_since_last_steer: float = 0.0  # seconds elapsed without manual steer input
     lane_assist_enabled: bool = False  # user toggle for lane assist feature (default False)
@@ -1701,8 +1706,15 @@ def update_car_physics(
     hard_at=None,
     waters: Optional[List] = None,
     lake_ice_holds: bool = False,
+    ground_at=None,
+    bump_field=None,
+    dem_step_m: float = 80.0,
 ) -> bool:
     """Update car speed, heading, and position.
+
+    `ground_at(x, y)`: the terrain height there (the DEM, vertical.ground_height) and `bump_field` (vertical.BumpField): given,
+    the car can leave the ground over a crest (terrain) or a mapped speed bump (car.airborne, air_height) and then flies
+    straight on with no control. Only layer 0 launches.
 
     `hard_at(x, y)`: points that are hard ground whatever the map has
     there (a ferry's steel deck, ferries.py).
@@ -1736,6 +1748,9 @@ def update_car_physics(
     """
     entry_x, entry_y, entry_heading = car.x, car.y, car.heading
     entry_speed = car.speed
+    if car.airborne:  # no tyre force: the controls and the limiter do nothing, only drag acts
+        throttle = brake = steer_left = steer_right = 0.0
+        speed_limit_mps = None
     if not car.engine_on:
         throttle = 0.0
     car.throttle = throttle
@@ -1796,13 +1811,14 @@ def update_car_physics(
         if speed_limit_mps is not None:
             car.speed = max(-speed_limit_mps, car.speed)
     else:
-        # friction slows towards 0
+        # friction slows towards 0 (in the air only drag does)
+        drag = AIR_DRAG if car.airborne else FRICTION
         if car.speed > 0:
-            car.speed = max(0.0, car.speed - FRICTION * dt)
+            car.speed = max(0.0, car.speed - drag * dt)
         else:
-            car.speed = min(0.0, car.speed + FRICTION * dt)
+            car.speed = min(0.0, car.speed + drag * dt)
 
-    if (wind[0] or wind[1]) and abs(entry_speed) >= WIND_MIN_SPEED_MPS and dt > 0.0:
+    if (wind[0] or wind[1]) and abs(entry_speed) >= WIND_MIN_SPEED_MPS and dt > 0.0 and not car.airborne:
         wind_forward, wind_left = wind_acceleration(car, wind)
         before_wind = car.speed
         car.speed += wind_forward * dt
@@ -1847,7 +1863,8 @@ def update_car_physics(
     # builds it back up on top of this when the driver is actively
     # oversteering past the surface's limit.
     drift_before_decay = car.drift_angle
-    car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
+    if not car.airborne:  # in the air the car keeps its take-off direction
+        car.drift_angle = _decay_toward_zero(car.drift_angle, DRIFT_RECOVERY_RATE, dt)
 
     heading_before_steering = car.heading  # the turn pivots on the rear axle (rear_axle_shift)
     # steer: positive -> turn left (counter-clockwise), negative -> turn right
@@ -1948,7 +1965,7 @@ def update_car_physics(
                     step = OVERSTEER_DRIFT_RATE * dt
                     car.drift_angle = drift_before_decay + clamp(target_drift - drift_before_decay, -step, step)
             car.heading += heading_rate * dt
-        elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5:
+        elif car.lane_assist_enabled and car.time_since_last_steer >= 0.35 and car.speed > 1.5 and not car.airborne:
             # Lane assist: when enabled and driver hasn't steered for a moment, gently track lane center
             current_road = get_current_road_at_car(
                 car, ways=ways, spatial_grid=spatial_grid, car_roads_only=True
@@ -2161,4 +2178,23 @@ def update_car_physics(
         grip_was_limited=steering_grip_limited,
         grip_overshoot=steering_overshoot,
     )
+    if ground_at is not None or bump_field is not None:
+        _step_vertical(car, ground_at or (lambda x, y: 0.0), dem_step_m, bump_field, (entry_x, entry_y), dt)
+    else:
+        car.airborne, car.air_height = False, 0.0
     return blocked
+
+
+def _step_vertical(car: Car, ground_at, dem_step_m: float, bump_field, previous, dt: float) -> None:
+    """Sets car.airborne (and air_height, land_bump) from the terrain under the car and the speed bump it crossed."""
+    terrain = getattr(car, "_terrain", None)
+    if terrain is None:
+        terrain = car._terrain = TerrainFlight()
+        car._bump_flight = BumpFlight()
+    layer = car.layer if car.map_level == 0 else 1
+    ground = terrain.step(ground_at, dem_step_m, car.x, car.y, car.heading, car.speed, layer, dt)
+    car._bump_flight.step(previous, (car.x, car.y), car.speed, dt, bump_field, layer, car.length_m * WHEELBASE_RATIO)
+    flight = car._bump_flight
+    car.airborne = terrain.airborne or flight.airborne
+    car.air_height = max(0.0, terrain.z - ground) if terrain.airborne else flight.air_height
+    car.land_bump = max(terrain.land_bump, flight.land_bump)
