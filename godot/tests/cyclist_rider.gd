@@ -22,6 +22,7 @@ func run() -> void:
 	test_rider_is_posed_person()
 	test_feet_on_pedals()
 	test_hips_on_saddle_hands_on_bars()
+	test_rider_is_placed_with_the_bike()
 	print("cyclist_rider: %d failures" % failures)
 	quit(1 if failures else 0)
 
@@ -37,7 +38,11 @@ func test_rider_is_posed_person() -> void:
 			var pose := "rider:%s:%d" % [model, 2]
 			var rider: int = B3.person_arrays(Color.RED, pose, 1.0, "", variant)["verts"].size()
 			check(rider == _walker(variant), "%s rider (variant %d): %d vertices, a walking person's %d" % [model, variant, rider, _walker(variant)])
-
+	for kind: String in ["bicycle", "motorcycle", "e_scooter"]:
+		var parked: int = B3.vehicle_arrays(kind, 1.8, 0.6, Color.RED, 0, {"riding": false})["verts"].size()
+		check(B3.vehicle_arrays(kind, 1.8, 0.6, Color.RED, 0, {"riding": true})["verts"].size() == parked, "%s: no box rider in the procedural body" % kind)
+		check(B3.model_vehicle_details(kind, 1.8, 0.6, Color.RED, 1, {"riding": true}).verts.size() == B3.model_vehicle_details(kind, 1.8, 0.6, Color.RED, 1, {"riding": false}).verts.size(),
+			"%s: no box rider in the GLB overlay" % kind)
 
 
 ## [left, right] centre of the shoe parts (part 4) of a rider mesh.
@@ -108,3 +113,25 @@ func test_hips_on_saddle_hands_on_bars() -> void:
 				if int(parts[i].x) == 1 and verts[i].y < rig["hip"].y + 0.6:  # skin below the head: the hands
 					near = minf(near, verts[i].distance_to(grip))
 			check(near <= 0.09, "%s: a hand within %.3f m of the %s grip" % [model, near, "right" if side > 0 else "left"])
+
+
+## The rider is its own organic body next to the bike's, with the crank phase and look passed in.
+func test_rider_is_placed_with_the_bike() -> void:
+	B3.use_shaded()
+	var renderer := B3.new()
+	renderer._cars_root = Node3D.new()
+	root.add_child(renderer._cars_root)
+	renderer.begin_cars()
+	renderer.vehicle("bicycle", Vector2(5, -5), 0.4, 1.8, 0.6, Color.RED, 1, 0.0, {"riding": false, "id": 4})
+	var parked: int = renderer._cars_used
+	renderer.vehicle("bicycle", Vector2(9, -5), 0.4, 1.8, 0.6, Color.RED, 1, 0.0, {"riding": true, "id": 4, "phase": 3})
+	check(renderer._cars_used - parked == 2, "a ridden bike places its details and a rider (%d bodies)" % (renderer._cars_used - parked))
+	check(B3.rider_verts >= _walker(0), "rider mesh %d vertices >= a person's %d" % [B3.rider_verts, _walker(0)])
+	var again: int = renderer._cars_used
+	renderer.vehicle("motorcycle", Vector2(12, -5), 0.4, 2.2, 0.8, Color.RED, 1, 0.0, {"riding": true, "id": 4})
+	renderer.vehicle("e_scooter", Vector2(15, -5), 0.4, 1.2, 0.5, Color.RED, 1, 0.0, {"riding": true, "id": 4})
+	check(renderer._cars_used - again == 4, "motorcycle and e-scooter riders are people too (%d bodies)" % (renderer._cars_used - again))
+	renderer.end_cars()
+	renderer._cars_root.free()
+	renderer.route_3d.free()
+	renderer.free()

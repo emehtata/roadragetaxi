@@ -1185,13 +1185,6 @@ static func model_vehicle_details(kind: String, length: float, width: float, col
 				var centre := Vector3(side * (0.16 if rear else 0.24), 0.6295 if rear else 1.0495, -0.69 if rear else 0.43)
 				_model_lens(out, model_kind, length, width, AABB(centre - Vector3.ONE * 0.026, Vector3.ONE * 0.052),
 					lamps & (LAMPS_LEFT if side > 0.0 else LAMPS_RIGHT) != 0, Color(1.0, 0.6, 0.05), Color8(150, 105, 40))
-	if kind == "motorcycle" and extra.get("riding", false):
-		_rider(out, -length * 0.15, length * 0.06, 0.95, Color8(34, 34, 38), color.lightened(0.15))
-	elif kind == "bicycle" and extra.get("riding", false):
-		_rider(out, -length * 0.15, length * 0.08, 0.8, color, Color8(236, 196, 160))
-	elif kind == "e_scooter" and extra.get("riding", false):
-		_rider(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, color, Color8(236, 196, 160))
-		_rider_legs(out, -length * 0.06, length * 0.14, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
 	return out
 
 
@@ -1304,9 +1297,11 @@ func _flush_animals() -> void:
 ## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
 func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}, tilt := Vector2.ZERO) -> void:
 	var id: Variant = extra.get("id", 0)
-	if extra.has("id"):  # out of the cache keys below: one shared mesh per look, not per vehicle
+	var phase: int = extra.get("phase", 0)  # a cyclist's crank pose
+	if extra.has("id") or extra.has("phase"):  # out of the cache keys below: one shared mesh per look, not per vehicle
 		extra = extra.duplicate()
 		extra.erase("id")
+		extra.erase("phase")
 	if opaque and kind == "train":
 		var profile: String = extra.get("profile", "standard")
 		var model_kind := "train_locomotive" if profile == "locomotive" else "train_coach"
@@ -1317,11 +1312,29 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps, tilt)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [model_kind, length, width, lamps, str(extra)]
 		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra, model_kind), at, heading, elevation, 0.0, false, tilt)
+		_place_rider(model_kind, id, phase, extra, at, heading, elevation, tilt)
 		return
 	var key := "v|%s|%.2f|%.2f|%s|%d|%s" % [kind, length, width, color.to_html(false), lamps, extra]
 	var fallen: bool = extra.get("fallen", false)
 	place_body(key, func() -> Dictionary: return vehicle_arrays(kind, length, width, color, lamps, extra), at, heading,
 		elevation + (width * 0.5 if fallen else 0.0), PI / 2.0 if fallen else 0.0, false, tilt)
+	_place_rider(model_kind, id, phase, extra, at, heading, elevation, tilt)
+
+
+## The person riding a two-wheeler (extra "riding"): a posed person_arrays body on its saddle or deck, its look from the
+## vehicle `id`, its feet on the pedals at crank `phase`.
+func _place_rider(model_kind: String, id: Variant, phase: int, extra: Dictionary, at: Vector2, heading: float, elevation: float, tilt: Vector2) -> void:
+	if not extra.get("riding", false) or not RIDER_RIGS.has(model_kind):
+		return
+	var hash_id := absi(hash(id))
+	var clothing := Color.from_hsv(fmod(hash_id * 0.618034, 1.0), 0.55, 0.78)
+	var detail := 0 if at.distance_to(windshield_at if windshield_on else view_centre) > 40.0 else 1
+	var pose := "rider:%s:%d" % [model_kind, phase if RIDER_RIGS[model_kind].has("crank") else 0]
+	var key := "rd|%s|%s|%d|%d" % [pose, clothing.to_html(false), hash_id % 8, detail]
+	place_body(key, func() -> Dictionary:
+		var arrays := person_arrays(clothing, pose, 1.0, "", hash_id % 8, false, detail)
+		rider_verts = maxi(rider_verts, arrays["verts"].size())
+		return arrays, at, heading, elevation, 0.0, true, tilt)
 
 
 static func _empty_arrays() -> Dictionary:
@@ -1334,37 +1347,6 @@ static func _part(out: Dictionary, part: int, x0: float, x1: float, y0: float, y
 	out["part_now"] = part
 	_car_box(out, x0, x1, y0, y1, bottom, top, color)
 	out["part_now"] = before
-
-
-## A seated or standing rider from x0 (back) to x1 (front): torso, head.
-static func _rider(out: Dictionary, x0: float, x1: float, seat: float, color: Color, head: Color) -> void:
-	_part(out, PAINT, x0, x1, -0.22, 0.22, seat, seat + 0.6, color)
-	_part(out, PAINT, x1 - 0.22, x1 - 0.02, -0.11, 0.11, seat + 0.62, seat + 0.86, head)
-
-
-## A standing rider's legs (person_arrays limbs): hips over the deck, back foot at x0,
-## front foot at x1, knees bent forward, shoe soles on the deck.
-static func _rider_legs(out: Dictionary, x0: float, x1: float, hip: float, deck: float, trousers: Color) -> void:
-	for joints: Array in rider_leg_joints(x0, x1, hip, deck):
-		var top: Vector3 = joints[0]
-		var knee: Vector3 = joints[1]
-		var ankle: Vector3 = joints[2]
-		_round_limb(out, top, knee, 0.094, 0.075, trousers)
-		_round_part(out, knee, Vector3(0.076, 0.074, 0.075), trousers)
-		_round_limb(out, knee, ankle, 0.073, 0.046, trousers)
-		_round_part(out, ankle + Vector3(0.06, -0.025, 0.0), Vector3(0.12, 0.055, 0.072), Color8(42, 42, 46), 4)
-
-
-## [hip, knee, ankle] per leg (z -0.1, +0.1): ankle 0.08 m over the deck so the
-## shoe sole (0.025 + 0.055 below the ankle) is on it; knee 0.1 m ahead of the
-## hip-ankle midpoint.
-static func rider_leg_joints(x0: float, x1: float, hip: float, deck: float) -> Array:
-	var legs := []
-	for side: float in [-1.0, 1.0]:
-		var top := Vector3((x0 + x1) * 0.5, hip, side * 0.1)
-		var ankle := Vector3(x0 if side < 0.0 else x1, deck + 0.08, side * 0.1)
-		legs.append([top, (top + ankle) * 0.5 + Vector3(0.1, 0.0, 0.0), ankle])
-	return legs
 
 
 ## Shared working blade; the beacon sits on the selected body roof.
@@ -1384,7 +1366,6 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 	var hl := length * 0.5
 	var hw := width * 0.5
 	var tyre := Color8(28, 28, 28)
-	var skin := Color8(236, 196, 160)
 	if kind in ["bus", "truck", "tractor", "camper_van", "trailer"]:  # metallic-painted bodywork; riders' and bikes' paint stays plain
 		out["part_now"] = METAL_PAINT
 	match kind:
@@ -1441,8 +1422,6 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 			_car_box(out, -hl * 0.5, -hl * 0.08, -hw * 0.3, hw * 0.3, 0.9, 0.98, Color8(40, 40, 42))
 			_part(out, LAMP if lamps & LAMPS_ON else PAINT, hl * 0.86, hl * 0.99, -0.08, 0.08, 0.8, 0.95,
 				Color(1.0, 0.97, 0.85) if lamps & LAMPS_ON else Color8(170, 170, 160))
-			if extra.get("riding", false):
-				_rider(out, -hl * 0.3, hl * 0.12, 0.95, Color8(34, 34, 38), color.lightened(0.15))
 		"bicycle":
 			var rear := Vector3(-hl * 0.62, 0.33, 0.0)
 			var front := Vector3(hl * 0.62, 0.33, 0.0)
@@ -1462,17 +1441,12 @@ static func vehicle_arrays(kind: String, length: float, width: float, color: Col
 				_round_limb(out, crank + Vector3(0.0, 0.0, side * 0.03), crank + Vector3(0.08 * side, 0.0, side * 0.08),
 					0.01, 0.01, Color8(82, 86, 88), PAINT, 0)
 			_bike_lamps(out, hl, lamps)
-			if extra.get("riding", false):
-				_rider(out, -hl * 0.37, hl * 0.18, 0.8, color, skin)
 		"e_scooter":
 			for x: float in [hl * 0.78, -hl * 0.78]:
 				_part(out, RUBBER, x - hl * 0.18, x + hl * 0.18, -0.03, 0.03, 0.0, 0.2, tyre)
 			_car_box(out, -hl * 0.72, hl * 0.62, -hw * 0.32, hw * 0.32, 0.1, 0.18, Color8(40, 160, 110))
 			_car_box(out, hl * 0.72, hl * 0.82, -0.03, 0.03, 0.18, 1.1, Color8(40, 40, 42))
 			_car_box(out, hl * 0.72, hl * 0.82, -hw, hw, 1.05, 1.1, tyre)
-			if extra.get("riding", false):
-				_rider(out, -hl * 0.12, hl * 0.28, SCOOTER_RIDER_SEAT, color, skin)
-				_rider_legs(out, -hl * 0.12, hl * 0.28, SCOOTER_RIDER_SEAT, SCOOTER_DECK_Y, Color8(48, 58, 74))
 		"ferry":  # open vehicle deck and side wheelhouse, like Finnish yellow road ferries
 			var hull: Color = RS.TRAIN_PROFILES["ferry"][0]
 			_car_box(out, -hl, hl, -hw, hw, -0.9, -0.05, hull.darkened(0.15))

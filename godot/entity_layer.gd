@@ -917,8 +917,10 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 		var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id)
 		var extra := {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
 			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4}
-		if kind in Buildings3D.MODEL_VARIANTS:  # the model variant comes from the id
+		if kind in Buildings3D.MODEL_VARIANTS or kind == "motorcycle":  # the model variant, and the rider's look, come from the id
 			extra["id"] = vehicle_id
+		if kind == "bicycle" and engine_on and not fallen:
+			extra["phase"] = _crank_phase(vehicle_id, c)
 		Buildings3D.current.vehicle(kind, c, heading, length, width, color, lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed),
 			pose.x, extra, Vector2(pose.y, pose.z))
 		return
@@ -1067,6 +1069,9 @@ const TILT_EASE_S := 0.058  # the stance eases toward the slope with this time c
 const POSE_RANGE_M := 120.0  # farther from the camera than this a body stays level: its wheels are not looked up
 
 
+var _rolled := {}  # bicycle id -> [last position, metres rolled]: its crank phase
+
+
 ## The server's hop of the player's car between two snapshots (vertical.py): [air_height m, land_bump 0..1, airborne].
 static func player_air(player: Dictionary, later: Dictionary, t: float) -> Array:
 	return [lerpf(float(player.get("air_height", 0.0)), float(later.get("air_height", player.get("air_height", 0.0))), t),
@@ -1078,6 +1083,18 @@ static func player_air(player: Dictionary, later: Dictionary, t: float) -> Array
 static func landing_squat(land_bump: float) -> Vector2:
 	var land := clampf(land_bump, 0.0, 1.0)
 	return Vector2(0.08 * land, 0.1 * land)
+
+
+## A bicycle's crank pose (0..CRANK_PHASES - 1) from the distance it has rolled, so the legs turn with the wheels.
+func _crank_phase(id: Variant, at: Vector2) -> int:
+	if _rolled.size() > 512:
+		_rolled.clear()
+	var row: Array = _rolled.get(id, [at, 0.0])
+	if row[0].distance_to(at) < 5.0:  # a teleport or a respawn does not count as riding
+		row[1] += row[0].distance_to(at)
+	row[0] = at
+	_rolled[id] = row
+	return int(fmod(float(row[1]) * Buildings3D.CRANK_PER_M, 1.0) * Buildings3D.CRANK_PHASES)
 
 
 ## A drawn body's (height, pitch, roll) on the ground under it: the surface at its centre, and the stance its four

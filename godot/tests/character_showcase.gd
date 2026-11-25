@@ -58,14 +58,12 @@ func capture() -> void:
 	]
 	if group == "legs":  # docs/specs/person-legs-walk-swing.md: two walk phases, procedural and GLB scooter riders
 		people = [[Color8(230, 80, 80), "walk_1", 1.0, ""], [Color8(230, 80, 80), "walk_4", 1.0, ""]]
-		add_mesh(B3.vehicle_arrays("e_scooter", 1.2, 0.5, Color8(60, 120, 220), 0, {"riding": true}), Vector3(0.3, 0.0, 0.0), 0.0)
+		add_mesh(B3.vehicle_arrays("e_scooter", 1.2, 0.5, Color8(60, 120, 220), 0, {}), Vector3(0.3, 0.0, 0.0), 0.0)
+		add_mesh(B3.person_arrays(Color8(60, 120, 220), "rider:e_scooter:0", 1.0, "", 1), Vector3(0.3, 0.0, 0.0), 0.0)
 		var model: Node3D = B3.MODEL_SCENES["e_scooter"].instantiate()
 		root.add_child(model)
 		model.transform = Transform3D(Basis(Vector3.UP, PI / 2.0).scaled_local(B3.model_scale("e_scooter", 1.2, 0.5)), Vector3(1.9, 0.0, 0.0))
-		var rider := B3._empty_arrays()
-		B3._rider(rider, -0.072, 0.168, B3.SCOOTER_RIDER_SEAT, Color8(60, 120, 220), Color8(236, 196, 160))
-		B3._rider_legs(rider, -0.072, 0.168, B3.SCOOTER_RIDER_SEAT, B3.SCOOTER_DECK_Y, Color8(48, 58, 74))
-		add_mesh(rider, Vector3(1.9, 0.0, 0.0), 0.0)
+		add_mesh(B3.person_arrays(Color8(60, 120, 220), "rider:e_scooter:0", 1.0, "", 1), Vector3(1.9, 0.0, 0.0), 0.0)
 	if group == "beards":
 		for i in 3:
 			add_mesh(B3.person_arrays(people[i][0], "standing", 1.0, "", [0, 2, 6][i], false, 1, [2, 3, 5][i]), Vector3(0.0, 0.0, (i - 1) * 0.75), 0.3)

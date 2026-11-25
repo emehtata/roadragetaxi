@@ -516,48 +516,32 @@ func test_person_beard_pick_by_gender() -> void:
 	check(none, "women and peds without a resident get no beard")
 
 
-## Acceptance 4-5: the e-scooter rider stands on the deck on two bent legs, torso unchanged.
+## docs/specs/person-legs-walk-swing.md acceptance 4-5, on the posed person of docs/specs/terrain-following-bodies.md part 4:
+## the e-scooter rider stands on the deck on two bent legs.
 ## Rules: hips at >= seat - 0.05 m and above the deck; lowest vertex within 0.02 m of SCOOTER_DECK_Y;
-## ankles in x0..x1 (staggered, back foot x0, front x1); the shoes reach from x0 - 0.06 (back shoe's heel)
-## to x1 + 0.18 (front toe: shoe centre 0.06 + half-length 0.12 ahead of the ankle), inside the deck
-## (-0.72 .. 0.62 of the half-length), |z| <= 0.2;
-## knee bend: the knee is >= 0.05 m ahead (+x) of the straight hip-to-ankle line at the knee's height.
+## ankles staggered along the deck, |z| <= 0.2; knee bend: the knee is >= 0.05 m ahead (+x) of the straight hip-to-ankle line.
 func test_scooter_rider_feet_on_deck() -> void:
-	var length := 1.2
-	var x0 := -length * 0.5 * 0.12  # vehicle_arrays' e_scooter rider span
-	var x1 := length * 0.5 * 0.28
+	var rig: Dictionary = B3.RIDER_RIGS["e_scooter"]
 	var seat := B3.SCOOTER_RIDER_SEAT
 	var deck := B3.SCOOTER_DECK_Y
-	var parked: int = B3.vehicle_arrays("e_scooter", length, 0.5, Color.RED, 0, {"riding": false})["verts"].size()
-	var body := B3._empty_arrays()
-	B3._rider(body, x0, x1, seat, Color.RED, Color.WHITE)
-	var rider: PackedVector3Array = B3.vehicle_arrays("e_scooter", length, 0.5, Color.RED, 0, {"riding": true})["verts"].slice(parked)
-	check(rider.slice(0, body["verts"].size()) == body["verts"], "scooter torso and head unchanged at the seat")
-	var legs := rider.slice(body["verts"].size())
-	check(legs.size() > 0 and legs.size() % 2 == 0, "scooter rider has two legs (%d leg vertices)" % legs.size())
+	var verts: PackedVector3Array = B3.person_arrays(Color.RED, "rider:e_scooter:0", 1.0, "", 0)["verts"]
 	var low := INF
-	var back := INF
-	var front := -INF
-	for v in legs:
+	for v in verts:
 		low = minf(low, v.y)
-		back = minf(back, v.x)
-		front = maxf(front, v.x)
-		check(absf(v.z) <= 0.2, "leg vertex %s within +-0.2 m of the centre line" % v)
 	check(absf(low - deck) <= 0.02, "lowest foot vertex %.3f on the deck %.2f" % [low, deck])
-	check(absf(back - (x0 - 0.06)) <= 0.005 and absf(front - (x1 + 0.18)) <= 0.005,
-		"feet reach %.3f..%.3f, rule x0 - 0.06 .. x1 + 0.18 = %.3f..%.3f" % [back, front, x0 - 0.06, x1 + 0.18])
-	check(back >= -length * 0.5 * 0.72 and front <= length * 0.5 * 0.62, "feet inside the deck")
-	var joints := B3.rider_leg_joints(x0, x1, seat, deck)
-	check(joints.size() == 2, "two leg joint sets")
-	for leg: Array in joints:
-		var hip: Vector3 = leg[0]
-		var knee: Vector3 = leg[1]
-		var ankle: Vector3 = leg[2]
+	var k := 0.96  # variant 0
+	var ankles := []
+	for side: float in [-1.0, 1.0]:
+		var hip := Vector3(rig["hip"].x, rig["hip"].y, side * 0.11 * k)
+		var pedal := B3.rider_pedal(rig, 0, side)
+		var ankle := Vector3(pedal.x - 0.07 * k, pedal.y + 0.08 * k, side * 0.12)
+		var knee := B3._limb_joint(hip, ankle, 0.42 * k, 0.36 * k, Vector3.RIGHT)
 		check(hip.y >= seat - 0.05 and hip.y > deck, "hip %.2f at the seat, above the deck" % hip.y)
-		check(ankle.x >= x0 and ankle.x <= x1 and absf(ankle.z) <= 0.2, "ankle x %.3f in %.3f..%.3f" % [ankle.x, x0, x1])
+		check(absf(ankle.z) <= 0.2 and absf(pedal.y - deck) < 1e-6, "foot on the deck, within +-0.2 m of the centre line")
 		var line_x := lerpf(hip.x, ankle.x, (hip.y - knee.y) / (hip.y - ankle.y))
 		check(knee.x - line_x >= 0.05, "knee %.3f m ahead of the hip-ankle line" % (knee.x - line_x))
-	check(absf(joints[0][2].x - joints[1][2].x) >= 0.1, "scooter rider's feet staggered along the deck")
+		ankles.append(ankle)
+	check(absf(ankles[0].x - ankles[1].x) >= 0.1, "scooter rider's feet staggered along the deck")
 
 
 ## Acceptance 2: at walking speed every 0.1 s step shows the next walk pose (WALK_POSES_PER_S > 10).
@@ -4161,7 +4145,8 @@ func test_buildings_3d() -> void:
 		check(built_vehicle["verts"].size() >= 36 and built_vehicle["part"].size() == built_vehicle["verts"].size(), "a %s has a 3D body" % kind)
 	var parked_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": false})["verts"].size()
 	var ridden_bike: int = B3.vehicle_arrays("bicycle", 1.8, 0.6, Color.BLUE, 0, {"riding": true})["verts"].size()
-	check(ridden_bike > parked_bike, "a ridden bicycle carries its rider, a parked one none")
+	check(ridden_bike == parked_bike and B3.person_arrays(Color.BLUE, "rider:bicycle:0", 1.0, "", 0)["verts"].size() > 0,
+		"the bicycle mesh is the same ridden or parked: its rider is a separate posed person (tests/cyclist_rider.gd places it)")
 	check(EntityLayer.person_pose({"animation_state": "walking"}, 0.05) == "walk_0" and EntityLayer.person_pose({"animation_state": "walking"}, 0.4) == "walk_4"
 		and EntityLayer.person_pose({"animation_state": "walking", "speed": 2.4}, 0.1) == "run_1"
 		and EntityLayer.person_pose({"animation_state": "fallen"}, 0.0) == "lying" and EntityLayer.person_pose({"animation_state": "sitting"}, 0.0) == "sitting"
