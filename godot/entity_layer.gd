@@ -2168,12 +2168,16 @@ func _trains_3d(a: Dictionary, b: Dictionary, t: float) -> void:
 				continue
 			var profile := str(car[4])
 			var width: float = RS.train_width(profile)
-			Buildings3D.current.vehicle("ferry" if profile == "ferry" else "tram" if profile.begins_with("tram") else "train", c, lerp_angle(car[2], to[2], t), float(car[3]), width,
-				Color.WHITE, 0, float(rail_height.call(c)), {"profile": profile})
+			var heading := lerp_angle(car[2], to[2], t)
+			var ferry := profile == "ferry"
+			var pose := body_pose(c, heading, float(car[3]), width, 0, "rail_%s_%d" % [train["id"], i],
+				func(p: Vector2) -> float: return float(rail_height.call(p, ferry)))
+			Buildings3D.current.vehicle("ferry" if ferry else "tram" if profile.begins_with("tram") else "train", c, heading, float(car[3]), width,
+				Color.WHITE, 0, pose.x, {"profile": profile}, Vector2(pose.y, pose.z))
 		_trains_drawn += 1
 
 
-var rail_height := func(_at: Vector2) -> float: return 0.0  # map_layer.rail_height (main.gd): up on a rail deck
+var rail_height := func(_at: Vector2, _ferry := false) -> float: return 0.0  # map_layer.rail_height (main.gd): the rails or water surface, up on a rail deck
 var wildlife: Node = null  # main.gd's WildlifeLayer: its larger animals are 3D with --outdoor-3d
 
 

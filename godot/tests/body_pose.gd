@@ -36,6 +36,8 @@ func run() -> void:
 	test_bus_pitch_on_grade()
 	test_wheels_on_the_ground()
 	test_far_bodies_stay_level()
+	test_train_on_dem()
+	test_ferry_on_water()
 	layer.free()
 	print("body_pose: %d failures" % failures)
 	quit(1 if failures else 0)
@@ -132,3 +134,63 @@ func test_far_bodies_stay_level() -> void:
 	check(Perf.counters["pose_lookups"] == lookups_near, "no wheel lookups beyond the range")
 	check(Perf.counters["pose_lookups"] <= 4 * Perf.counters["bodies_posed"], "pose_lookups %d <= 4 x bodies %d" % [Perf.counters["pose_lookups"], Perf.counters["bodies_posed"]])
 	print("pose lookups %d for %d body calls" % [Perf.counters["pose_lookups"], Perf.counters["bodies_posed"]])
+
+
+func _map_with_dem(slope: float, water := false) -> Map:
+	var flags := [Chunk.buildings_3d, Chunk.outdoor_3d, Chunk.build_async]
+	Chunk.buildings_3d = true
+	Chunk.outdoor_3d = true
+	Chunk.build_async = false
+	var map := Map.new()
+	root.add_child(map)
+	var heights := []
+	for r in 8:
+		for c in 8:
+			heights.append(c * 20.0 * slope)
+	map.add_chunk({"chunk_id": "0_0", "bounds": [0, 0, 100, 100], "ground_heights": {"origin": [0, 0], "step": 20.0, "cols": 8, "heights": heights}})
+	Chunk.buildings_3d = flags[0]
+	Chunk.outdoor_3d = flags[1]
+	Chunk.build_async = flags[2]
+	return map
+
+
+## Criterion 8: a train on a slope has a nonzero pitch, sits on the ground (DEM), and up DECK_M on a rail deck.
+func test_train_on_dem() -> void:
+	var map := _map_with_dem(0.06)
+	B3.current = renderer
+	B3.view_centre = Vector2(50, -50)
+	var at := Vector2(50, -50)
+	var ground := func(p: Vector2) -> float: return map.rail_height(p, false)
+	layer.deck_height = func(p: Vector2, lay: int, road := true) -> float: return map.deck_height(p, lay, road)
+	var pose := _settle(at, 0.0, 20.0, 2.9, "rail_t_0", ground)
+	print("train on 6 %%: pitch %.4f rad, rail %.3f m" % [pose.y, pose.x])
+	check(absf(pose.y - atan(0.06)) < 0.01, "train pitch %.4f rad on a 6 %% grade" % pose.y)
+	check(absf(pose.x - map.deck_height(at, 0, false) - B3.RAIL_M * B3.DEM_GAP_SCALE) < 0.05, "train rails %.3f m over the DEM ground %.3f m" % [pose.x, map.deck_height(at, 0, false)])
+	check(pose.x > 0.5, "the train rides the hill's height, not 0")
+	map.free()
+
+
+## Criterion 8: a ferry sits at the drawn water surface within 0.1 m: the road mesh's water area on the same DEM.
+func test_ferry_on_water() -> void:
+	var map := _map_with_dem(0.06)
+	var at := Vector2(50, -50)
+	var chunk = map._chunks["0_0"]
+	var water := PackedVector2Array([Vector2(20, -20), Vector2(80, -20), Vector2(80, -80), Vector2(20, -80)])
+	var out := B3.build([], [], Vector2.ZERO, [], [], {"rect": Rect2(0, -100, 100, 100), "areas": [[water, Color.BLUE, true]], "ground_heights": chunk.ground_heights})
+	var top := -INF
+	var verts: PackedVector3Array = out["road"]
+	for t in range(0, verts.size(), 3):
+		var a := Vector2(verts[t].x, verts[t].z)
+		var b := Vector2(verts[t + 1].x, verts[t + 1].z)
+		var c := Vector2(verts[t + 2].x, verts[t + 2].z)
+		var d := (b - a).cross(c - a)
+		if absf(d) < 1e-9:
+			continue
+		var u := (at - a).cross(c - a) / d
+		var v := (b - a).cross(at - a) / d
+		if u >= -1e-6 and v >= -1e-6 and u + v <= 1.0 + 1e-6:
+			top = maxf(top, verts[t].y + u * (verts[t + 1].y - verts[t].y) + v * (verts[t + 2].y - verts[t].y))
+	var ferry: float = map.rail_height(at, true)
+	print("ferry %.3f m, drawn water %.3f m" % [ferry, top])
+	check(top > -INF and absf(ferry - top) <= 0.1, "ferry %.3f m vs the drawn water surface %.3f m" % [ferry, top])
+	map.free()

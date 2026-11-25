@@ -2856,6 +2856,11 @@ static func road_surface_height(at: Vector2, layer: int, ends: PackedVector2Arra
 	return base + bump if grid.is_empty() else road_lift(base) + terrain_mesh_height(grid, at) + bump  # flat: build() skips the drape
 
 
+## A flat layer of the road mesh (water, rails, roads) drawn `y` above flat ground, as build() drapes it over `grid`.
+static func surface_height(y: float, grid: Dictionary, at: Vector2) -> float:
+	return y if grid.is_empty() else road_lift(y) + terrain_mesh_height(grid, at)
+
+
 ## The raw deck/ramp height plus the bilinear ground (no road lift): the bridge mesh and things on terrain.
 static func deck_base(at: Vector2, layer: int, ends: PackedVector2Array, grid := {}) -> float:
 	var ground := ground_height(grid, at)

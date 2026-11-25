@@ -634,14 +634,23 @@ func deck_height(at: Vector2, layer: int, road := true) -> float:
 	return Buildings3D.road_surface_height(at, layer, ends, grid, bumps) if road else Buildings3D.deck_base(at, layer, ends, grid)
 
 
-## Step 6: a train's height at `at`: up on a rail deck (a railway bridge), else the ground.
-func rail_height(at: Vector2) -> float:
+## Step 6: a train's height at `at`: its rails on the ground (DEM), up DECK_M on a rail deck (a railway bridge). `ferry`: the
+## drawn water surface there instead (the road mesh's water areas).
+func rail_height(at: Vector2, ferry := false) -> float:
+	var grid := {}
+	var on_deck := false
 	for chunk in _chunks.values():
 		if chunk._bounds_rect.size == Vector2.ZERO or chunk._bounds_rect.has_point(at):
-			for deck in chunk._data.get("rail_decks", []):
-				if Geometry2D.is_point_in_polygon(at, chunk._points(deck)):
-					return Buildings3D.DECK_M
-	return 0.0
+			if not chunk.ground_heights.is_empty():
+				grid = chunk.ground_heights
+			if not ferry and not on_deck:
+				for deck in chunk._data.get("rail_decks", []):
+					if Geometry2D.is_point_in_polygon(at, chunk._points(deck)):
+						on_deck = true
+						break
+	if ferry:
+		return Buildings3D.surface_height(Buildings3D.AREAS_TOP_M, grid, at)
+	return (Buildings3D.DECK_M + Buildings3D.ground_height(grid, at)) if on_deck else Buildings3D.surface_height(Buildings3D.RAIL_M, grid, at)
 
 
 func set_shop_lights(states: Dictionary) -> void:
