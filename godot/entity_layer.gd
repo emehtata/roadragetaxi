@@ -118,7 +118,7 @@ const CAR_SHAPES := [
 const VAN_SHAPE := [0.78, 0.56, -0.96, -0.96, 0.84, "door"]  # a van: short nose, one long roof
 var _under := false  # the vehicle being drawn is under a bridge: 2D, below the deck (no 3D body) - not with --outdoor-3d
 var _layer := 0  # the vehicle being drawn's map layer: --outdoor-3d rides it at its deck height
-var _vertical := VehicleVertical.new()  # the player's taxi: airborne arc over crests (docs/specs/vehicle-airborne-physics.md)
+var _player_air := [0.0, 0.0, false]  # [air_height, land_bump, airborne] of the player's state, interpolated: the server's hop
 var _player_speed := 0.0
 var air_height := 0.0  # m the player's taxi is above the road this frame (0 on it)
 var _driven := false  # drawing the player's own taxi (NPC taxis are is_taxi too)
@@ -1038,20 +1038,20 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 				var tilt := Vector2.ZERO
 				var height := 0.0
 				if Buildings3D.opaque:  # visual stance from the road under the wheels, eased so it doesn't jitter
-					var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id, Callable(), _driven and _vertical.airborne)
+					var in_air: bool = _driven and bool(_player_air[2])
+					var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id, Callable(), in_air)
 					height = pose.x
 					tilt = Vector2(pose.y, pose.z)
-					if _driven:  # the driven vehicle may leave the road over a crest; the arc is cosmetic
-						var ground := height
-						_vertical.track(_layer, c, ground)
-						height = _vertical.step(ground, ground - float(deck_height.call(c - f, _layer)), _player_speed, get_process_delta_time())  # slope 1 m behind
-						air_height = height - ground if _vertical.airborne else 0.0
-						if _vertical.airborne:
+					if _driven:  # the driven vehicle may leave the road over a crest or a bump: the hop is the server's (vertical.py)
+						air_height = float(_player_air[0]) if in_air else 0.0
+						height += air_height
+						if in_air:
 							var counters: Dictionary = preload("res://perf.gd").counters
 							counters["airborne_frames"] = counters.get("airborne_frames", 0) + 1
 						else:  # the landing bump: nose down, body squats
-							height -= 0.08 * _vertical.land_bump
-							tilt.x -= 0.1 * _vertical.land_bump
+							var squat := landing_squat(float(_player_air[1]))
+							height -= squat.x
+							tilt.x -= squat.y
 				cars_3d.car(c, heading, length, width, color, shape, (2 if lit else 1) if is_taxi else 0, lamps,
 					height, tilt, null if is_taxi else vehicle_id)
 				if Buildings3D.opaque:  # --outdoor-3d: its lamps are emissive parts of the body, the beams 3D lights
@@ -1065,6 +1065,19 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 
 const TILT_EASE_S := 0.058  # the stance eases toward the slope with this time constant (0.25 per frame at 60 Hz)
 const POSE_RANGE_M := 120.0  # farther from the camera than this a body stays level: its wheels are not looked up
+
+
+## The server's hop of the player's car between two snapshots (vertical.py): [air_height m, land_bump 0..1, airborne].
+static func player_air(player: Dictionary, later: Dictionary, t: float) -> Array:
+	return [lerpf(float(player.get("air_height", 0.0)), float(later.get("air_height", player.get("air_height", 0.0))), t),
+		lerpf(float(player.get("land_bump", 0.0)), float(later.get("land_bump", 0.0)), t), bool(player.get("airborne", false)) or bool(later.get("airborne", false))]
+
+
+## The landing jolt of the body: (how far it squats in m, how far its nose dips in rad), from the server's land_bump
+## clamped to 0..1: at most 0.08 m and 0.1 rad, and nothing when land_bump has decayed.
+static func landing_squat(land_bump: float) -> Vector2:
+	var land := clampf(land_bump, 0.0, 1.0)
+	return Vector2(0.08 * land, 0.1 * land)
 
 
 ## A drawn body's (height, pitch, roll) on the ground under it: the surface at its centre, and the stance its four
@@ -2056,6 +2069,8 @@ func _draw() -> void:
 		_smoke(taxi_at, taxi.z, taxi_length, _clock, true, _exhaust)
 	taxi_sign_on = taxi_sign_lit(a.get("taxi", {}))
 	_player_speed = absf(float(player.get("speed", 0.0)))
+	var later: Dictionary = b.get("player", player)
+	_player_air = player_air(player, later, t)
 	_driven = true
 	_vehicle(taxi_at, taxi.z, taxi_length, player.get("width_m", 1.8), RS.TAXI_BODY, "car", true,
 		player.get("engine_on", false), player.get("braking", false), is_reversing(player.get("speed", 0.0)), "", 0.0, false, taxi_under,

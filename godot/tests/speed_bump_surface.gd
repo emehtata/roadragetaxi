@@ -23,6 +23,9 @@ func _initialize() -> void:
 
 func run() -> void:
 	test_mesh_matches_deck_height()
+	test_hump_hop_fast()
+	test_hump_rolls_slow()
+	test_short_bump_jolts()
 	test_only_the_chunk_under_the_car()
 	print("speed_bump_surface: %d failures" % failures)
 	quit(1 if failures else 0)
@@ -80,6 +83,43 @@ func test_mesh_matches_deck_height() -> void:
 				check(mesh > -INF, "%s: the mesh covers point %d" % [kind, i])
 			print("%s slope %.1f: worst mesh vs deck_height %.4f m" % [kind, slope, worst])
 			check(worst <= 0.005, "%s (slope %.1f): mesh top and deck_height differ by %.4f m" % [kind, slope, worst])
+
+
+## Criterion 2: the hop of a hump at 50 km/h is the server's (vertical.py BumpFlight): the client blends the two snapshots'
+## air_height and lands where the server does, never computing an arc of its own (the client has no arc code at all).
+func test_hump_hop_fast() -> void:
+	var player := {"air_height": 0.02, "land_bump": 0.0, "airborne": true}
+	var later := {"air_height": 0.06, "land_bump": 0.0, "airborne": true}
+	var mid := Entities.player_air(player, later, 0.5)
+	check(is_equal_approx(mid[0], 0.04) and mid[2], "half way between two snapshots in the air: %s" % [mid])
+	var down := Entities.player_air(later, {"air_height": 0.0, "land_bump": 0.3, "airborne": false}, 1.0)
+	check(down[0] == 0.0 and is_equal_approx(down[1], 0.3) and down[2], "the landing snapshot: no height, the jolt, still the flight's last frame: %s" % [down])
+
+
+## Criterion 2: at 20 km/h the car stays on the hump: the surface it rolls on is continuous, 0.10 m high, with no air from the server.
+func test_hump_rolls_slow() -> void:
+	var bumps := _bump("hump")
+	var base := B3.deck_height(Vector2(50.0, -100.0), 0, PackedVector2Array(), {}, bumps)
+	var peak := 0.0
+	var step := 0.0
+	var last := base
+	for i in 400:
+		var h := B3.deck_height(Vector2(98.0 + i * 0.01, -100.0), 0, PackedVector2Array(), {}, bumps)
+		step = maxf(step, absf(h - last))
+		peak = maxf(peak, h - base)
+		last = h
+	check(absf(peak - 0.10) < 0.002 and step < 0.002, "the hump is a smooth 0.10 m rise (peak %.4f m, steepest 1 cm step %.4f m)" % [peak, step])
+	check(Entities.player_air({"air_height": 0.0, "airborne": false}, {}, 0.5) == [0.0, 0.0, false], "no hop at 20 km/h: the server sends none")
+
+
+## Criterion 3: a short bump's landing jolt is the server's land_bump, blended and decaying with the snapshots.
+func test_short_bump_jolts() -> void:
+	var jolt := Entities.player_air({"air_height": 0.0, "land_bump": 0.28}, {"air_height": 0.0, "land_bump": 0.0}, 0.25)
+	check(is_equal_approx(jolt[1], 0.21), "a 0.28 landing jolt blended a quarter to the next snapshot: %s" % [jolt])
+	var squat := Entities.landing_squat(jolt[1])
+	check(is_equal_approx(squat.x, 0.0168) and is_equal_approx(squat.y, 0.021), "the body squats %s for a 0.21 jolt" % [squat])
+	check(Entities.landing_squat(5.0) == Vector2(0.08, 0.1) and Entities.landing_squat(-1.0) == Vector2.ZERO and Entities.landing_squat(0.0) == Vector2.ZERO,
+		"the squat is bounded at 0.08 m and 0.1 rad and gone when the jolt has decayed")
 
 
 ## Criterion 5: deck_height reads the bumps of the chunk containing the point only.
