@@ -85,7 +85,7 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
         trailer = vehicle_definition("car_caravan").trailer
         spec["lineup_trailer"] = [trailer.length_m, trailer.width_m, trailer.drawbar_m]
         spec["lineup_tram"] = [DEFAULT_TRAM[0], list(DEFAULT_TRAM[1]), TRAM_WIDTH_M]
-        if scenario.get("view", "3d") == "3d":  # the 3D view draws a train coach too (lineup "coach": only it, close)
+        if scenario.get("view", "3d") == "3d" and not scenario.get("lineup_no_coach"):  # the 3D view draws a train coach too (lineup "coach": only it, close)
             from theroadragetrip.train_compositions import DEFAULT_WAGON_LENGTH_M
             from theroadragetrip.trains import TRAIN_WIDTH_M
 

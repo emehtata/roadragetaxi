@@ -104,14 +104,19 @@ Scenarios live in `tools/visual_scenarios.json`. Fields:
 | `sun_altitude_deg` | `[min, max]` the light the scenario needs |
 | `zoom` | camera zoom factor (the camera is top-down, following the vehicle) |
 | `view` | `3d` (default) or `2d` |
-| `requires` | `lamps_in_view`, `buildings_in_view` minimums; `ground_rise`: `[x, y, m]`, ready only when the ground at (x, y) is m metres above the pose's (a `--test-hill` is loaded); `airborne_frames`: the run fails if the taxi was in the air for fewer frames; `notice_contains`: a HUD notice with that text, wholly on screen (the data-source notice's ~15 s clock is held while it is checked) |
+| `requires` | `lamps_in_view`, `buildings_in_view` minimums; `ground_rise`: `[x, y, m]`, ready only when the ground at (x, y) is m metres above the pose's (a `--test-hill` is loaded); `airborne_frames`: the run fails if the taxi was in the air for fewer frames; `body_pitch`: `{kind: rad}`, ready only when the last drawn body of each kind (`bus`, `tram`...) is pitched at least that much with the ground; `bodies_on_ground`: `[lineup m, traffic m]`, ready only when every drawn model's wheel points are within that of the surface of its own layer (the rails for trains), the standing lineup and the moving traffic judged apart; `rider_parts`: ready only when a rider mesh with at least a walking person's vertex count was built; `riders_near`: `[max m, min px, kind]`, ready only when a riding `kind` (bicycle, motorcycle, e_scooter) is on screen within that distance of the camera and at least that tall; `notice_contains`: a HUD notice with that text, wholly on screen (the data-source notice's ~15 s clock is held while it is checked) |
 | `measure_s` / `drive_s` | seconds measured standing / driving |
 | `seed` | random seed (default 1) |
 | `graphics` | graphics settings under test, over the saved ones, e.g. `{"brightness": 1.4}` |
 | `godot_args`, `server_args` | extra flags |
 | `windshield` | press `I` once the taxi is ready and require the forward view before capture |
 | `speed_limiter` | `false` turns the speed limiter (V) off for the whole run, so a `drive_s` drive can exceed the street's limit (the taxi reaches 30 m/s in about 8 s) |
-| `capture_airborne_m` | with `drive_s`: take the screenshot as soon as the player's taxi is this many metres above the road (`entities.air_height`); the run fails if it never was |
+| `capture_airborne_m`, `capture_apex` | with `drive_s`: take the screenshot as soon as the player's taxi is this many metres above the road (`entities.air_height`); with `capture_apex` at the first frame past the top of the arc (the run fails if the shot is under 90 % of the peak); the run fails if it never was |
+| `lineup_shift`, `lineup_lane` | with `lineup_along_road`: where the lineup starts along the road (default 6 m ahead of the taxi's middle) and how far left of the taxi's line it stands (default 3.5 m) |
+| `lineup_check` | `false`: the lineup's screen boxes are not required inside the view (a scenario that checks its bodies another way) |
+| `lineup_turn_deg` | the lineup's bodies turned this many degrees from the road's direction (a side or three-quarter view from the chase camera) |
+| `lineup_top_m` | the height (default 3.5 m) up to which each lineup body must be inside the screen |
+| `with_tram`, `lineup_tram_s`, `lineup_no_coach` | with `lineup_kinds`: the lineup's tram section too, starting `lineup_tram_s` m along the road (default 27); `lineup_no_coach` leaves out the train coach under it |
 | `lane_assist` | press `K` once the taxi is ready ("keep car on lane") |
 
 ### Choosing the place

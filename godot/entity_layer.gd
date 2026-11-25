@@ -122,6 +122,9 @@ var _player_air := [0.0, 0.0, false]  # [air_height, land_bump, airborne] of the
 var _player_speed := 0.0
 var air_height := 0.0  # m the player's taxi is above the road this frame (0 on it)
 var _driven := false  # drawing the player's own taxi (NPC taxis are is_taxi too)
+var log_poses := false  # visual_test.gd: pose_log lists this frame's 3D bodies as [kind, layer position, layer, id, on rails]
+var pose_log: Array = []
+var last_pitch := {}  # vehicle kind -> the largest pitch (rad) of a 3D body of that kind drawn this frame: what visual_test.gd's slope scenario reads
 var _tilts := {}  # body id (or "taxi") -> Vector2(pitch, roll) of its 3D body, eased (body_pose)
 var deck_height := func(_at: Vector2, _layer: int, _road := true) -> float: return 0.0  # map_layer.deck_height (main.gd)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
@@ -915,6 +918,10 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 	width = maxf(width, _px(2.5))
 	if Buildings3D.opaque and Buildings3D.current != null and kind in VEHICLES_3D:  # step 6: every vehicle in the 3D view
 		var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id)
+		if log_poses:
+			pose_log.append([kind, c, _layer, vehicle_id, false])
+		if absf(pose.y) >= absf(float(last_pitch.get(kind, 0.0))):
+			last_pitch[kind] = pose.y
 		var extra := {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
 			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4}
 		if kind in Buildings3D.MODEL_VARIANTS or kind == "motorcycle":  # the model variant, and the rider's look, come from the id
@@ -1042,6 +1049,8 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 				if Buildings3D.opaque:  # visual stance from the road under the wheels, eased so it doesn't jitter
 					var in_air: bool = _driven and bool(_player_air[2])
 					var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id, Callable(), in_air)
+					if log_poses:
+						pose_log.append(["car", c, _layer, vehicle_id, false])
 					height = pose.x
 					tilt = Vector2(pose.y, pose.z)
 					if _driven:  # the driven vehicle may leave the road over a crest or a bump: the hop is the server's (vertical.py)
@@ -1959,6 +1968,8 @@ func _draw() -> void:
 	var t: float = _frame["t"]
 	var count := 0
 	var counters: Dictionary = preload("res://perf.gd").counters
+	last_pitch.clear()
+	pose_log.clear()
 	counters["pose_lookups"] = 0  # this frame's body_pose wheel lookups, and the bodies posed
 	counters["bodies_posed"] = 0
 	_lamp_polys.clear()
@@ -2204,6 +2215,11 @@ func _trains_3d(a: Dictionary, b: Dictionary, t: float) -> void:
 			var ferry := profile == "ferry"
 			var pose := body_pose(c, heading, float(car[3]), width, 0, "rail_%s_%d" % [train["id"], i],
 				func(p: Vector2) -> float: return float(rail_height.call(p, ferry)))
+			var train_kind := "ferry" if ferry else "tram" if profile.begins_with("tram") else "train"
+			if log_poses:
+				pose_log.append([train_kind, c, 0, train["id"], true])
+			if absf(pose.y) >= absf(float(last_pitch.get(train_kind, 0.0))):
+				last_pitch[train_kind] = pose.y
 			Buildings3D.current.vehicle("ferry" if ferry else "tram" if profile.begins_with("tram") else "train", c, heading, float(car[3]), width,
 				Color.WHITE, 0, pose.x, {"profile": profile}, Vector2(pose.y, pose.z))
 		_trains_drawn += 1

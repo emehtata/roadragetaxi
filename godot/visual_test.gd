@@ -25,6 +25,7 @@ var _stable := 0
 var _missing: Array = []
 var _measuring := false
 var _measure_left := 0.0
+var _air_peak := 0.0  # the highest the player's taxi has been above the road this run (capture_apex)
 var _frames := PackedFloat32Array()
 var _chunks_seen := -1  # chunks loaded + queued at the last check
 var _chunks_changed_msec := 0
@@ -141,12 +142,13 @@ func _lineup() -> Array:
 	var out := []
 	var rows: Array = scenario["lineup_rows"]
 	var along: bool = scenario.get("lineup_along_road", false)  # 3D: end to end in a lane left of the taxi, clear of buildings
-	var heading: float = pose[2] if along else 0.0
+	var heading: float = (pose[2] if along else 0.0) + deg_to_rad(float(scenario.get("lineup_turn_deg", 0.0)))  # turned: a side view of the bodies
 	var trailer: Array = scenario["lineup_trailer"]
 	var total := 0.0
 	for row: Array in rows:
 		total += float(row[1]) + LINEUP_GAP_M + (float(trailer[0]) + float(trailer[2]) if row[0] == "car_caravan" else 0.0)
-	var s := -total * 0.5 + LINEUP_SHIFT_M  # forward a little: the back end clear of the dashboard
+	var s := -total * 0.5 + float(scenario.get("lineup_shift", LINEUP_SHIFT_M))  # forward a little: the back end clear of the dashboard
+	var lane := float(scenario.get("lineup_lane", LINEUP_LANE_M))  # metres left of the taxi's line
 	for i in rows.size():
 		var row: Array = rows[i]
 		var x: float = pose[0] + 6.0 + row[1] * 0.5
@@ -154,7 +156,7 @@ func _lineup() -> Array:
 		if along:
 			if row[0] == "car_caravan":
 				s += float(trailer[0]) + float(trailer[2])
-			var at := _on_road(s + row[1] * 0.5, LINEUP_LANE_M)
+			var at := _on_road(s + row[1] * 0.5, lane)
 			x = at.x
 			y = at.y
 			s += float(row[1]) + LINEUP_GAP_M
@@ -174,7 +176,7 @@ func _lineup() -> Array:
 				var id := "lineup_%d_%d" % [i, k]
 				if not shown.has(Buildings3D.model_variant(row[0], id)):
 					shown[Buildings3D.model_variant(row[0], id)] = true
-					var side := _on_road(s - row[1] * 0.5 - LINEUP_GAP_M, LINEUP_LANE_M + 1.2 * shown.size() - 1.2)
+					var side := _on_road(s - row[1] * 0.5 - LINEUP_GAP_M, lane + 1.2 * shown.size() - 1.2)
 					var more := npc.duplicate()
 					more.merge({"id": id, "x": side.x, "y": side.y}, true)
 					out.append(more)
@@ -305,9 +307,9 @@ func _ready() -> void:
 			"length_m":2.2 if kind == "motorcycle" else 1.8 if kind == "bicycle" else 1.2,
 			"width_m":0.8 if kind == "motorcycle" else 0.6 if kind == "bicycle" else 0.5,
 			"color":[175,85,48],"vehicle_type":kind,"state":"DRIVING" if scenario.get("riding",true) else "PARKED","speed":0.0,"is_taxi":false}]
-	if scenario.get("lineup", false) is bool and scenario.get("lineup", false) and not scenario.has("lineup_kinds"):  # a close lineup: its rows only
+	if scenario.get("lineup", false) is bool and scenario.get("lineup", false) and (not scenario.has("lineup_kinds") or scenario.get("with_tram", false)):  # a close lineup: its rows only (and the tram with "with_tram")
 		var tram: Array = scenario["lineup_tram"]  # [look, section lengths, width]
-		main.entities.extra_trains = [_lineup_train("tram section", tram[0], tram[1], tram[2], 27.0 if scenario.get("lineup_along_road", false) else 13.5)]
+		main.entities.extra_trains = [_lineup_train("tram section", tram[0], tram[1], tram[2], float(scenario.get("lineup_tram_s", 27.0)) if scenario.get("lineup_along_road", false) else 13.5)]
 		if scenario.has("lineup_coach"):  # [look, length, width]: a train coach under the tram
 			var coach: Array = scenario["lineup_coach"]
 			main.entities.extra_trains.append(_lineup_train("train coach", coach[0], [coach[1]], coach[2], -2.0 if scenario.get("lineup_along_road", false) else 8.5))
@@ -393,7 +395,10 @@ func _process(delta: float) -> void:
 				_measure_failures.append(reason)
 		_measure_left -= delta
 		var wanted_air: float = float(scenario.get("capture_airborne_m", 0.0))
-		if _measure_left <= 0.0 or (wanted_air > 0.0 and main.entities.air_height >= wanted_air):  # airborne: shot while in the arc
+		var air: float = main.entities.air_height
+		_air_peak = maxf(_air_peak, air)
+		var at_apex: bool = _air_peak >= wanted_air and air < _air_peak - 0.0005  # the first frame past the top of the arc
+		if _measure_left <= 0.0 or (wanted_air > 0.0 and (at_apex if scenario.get("capture_apex", false) else air >= wanted_air)):  # airborne: shot while in the arc
 			_finish()
 		return
 	if str(missing) != str(_missing):
@@ -873,6 +878,28 @@ func check() -> Array:
 		_counts["carts_in_view"] = seen
 		if seen < int(scenario["requires"]["carts_in_view"]):
 			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
+	var requires: Dictionary = scenario.get("requires", {})
+	if requires.get("rider_parts", false):  # docs/specs/terrain-following-bodies.md part 4: a posed person rides, not two boxes
+		var person: int = Buildings3D.person_arrays(Color.RED, "walk_0", 1.0, "", 0)["verts"].size()
+		_counts["rider_verts"] = Buildings3D.rider_verts
+		if Buildings3D.rider_verts < person:
+			missing.append("the cyclist's body has %d vertices, a person's %d: no posed rider is drawn" % [Buildings3D.rider_verts, person])
+	for kind: String in requires.get("body_pitch", {}):  # a drawn body of this kind tilts at least this much (rad) with the ground
+		var pitch := absf(float(main.entities.last_pitch.get(kind, 0.0)))
+		_counts["pitch_" + kind] = pitch
+		if pitch < float(requires["body_pitch"][kind]):
+			missing.append("the %s's pitch is %.3f rad, the scenario needs %.3f (no body tilts with the ground)" % [kind, pitch, requires["body_pitch"][kind]])
+	if requires.has("bodies_on_ground"):  # every drawn model's wheel points are within 0.05 m of the road (rails: the rail) surface
+		var worst := _body_ground_error()
+		_counts["body_ground_error_lineup_m"] = worst[0]
+		_counts["body_ground_error_traffic_m"] = worst[1]
+		if worst[0] > float(requires["bodies_on_ground"][0]) or worst[1] > float(requires["bodies_on_ground"][1]):
+			missing.append("a drawn %s's wheels are %.3f m (lineup) / %.3f m (traffic) from its own layer's ground, the scenario allows %s m" % [worst[2], worst[0], worst[1], requires["bodies_on_ground"]])
+	if requires.has("riders_near"):  # the riding bicycles are on screen, close and large: [max metres from the camera, min height in pixels, kind]
+		var near: Array = _riders_near(str(requires["riders_near"][2]))
+		_counts["riders_near"] = near
+		if near[0] < 1 or near[1] > float(requires["riders_near"][0]) or near[2] < float(requires["riders_near"][1]):
+			missing.append("%d riders on screen, the nearest %.1f m away, the nearest %.0f px high; the scenario needs them within %s m and %s px" % [near[0], near[1], near[2], requires["riders_near"][0], requires["riders_near"][1]])
 	var rise: Array = scenario.get("requires", {}).get("ground_rise", [])  # [x, y, min m]: the ground there is this far above the pose's (the synthetic hill is loaded)
 	if rise.size() == 3:
 		var there: float = main.map_layer.deck_height(MapMath.point(main.entities.origin, rise[0], rise[1]), 0)
@@ -897,6 +924,64 @@ func check() -> Array:
 		elif not main.get_viewport().get_visible_rect().encloses(notice.get_global_rect()):
 			missing.append("HUD notice clipped by the screen edge")
 	return missing
+
+
+## The distance from the ground to each drawn model's wheel points (the four at 0.35 of its length and 0.4 of its width), against
+## the surface of that body's own layer (entities.pose_log; the rails for trains): [worst of the lineup's bodies, worst of the
+## other bodies, the kind of the worst]. The lineup stands still, so it must be exact; real traffic moves and its stance eases.
+func _body_ground_error() -> Array:
+	var layer = main.map_layer.buildings_3d
+	main.entities.log_poses = true
+	var worst := [0.0, 0.0, ""]
+	for kind: String in layer._model_nodes:
+		var box := Buildings3D.merged_model(kind).get_aabb()
+		var long_z := box.size.z >= box.size.x
+		for i in int(layer._model_used.get(kind, 0)):
+			var node: Node3D = layer._model_nodes[kind][i]
+			var at := Vector2(node.global_position.x, node.global_position.z)
+			var body: Array = []
+			for entry: Array in main.entities.pose_log:
+				if entry[1].distance_to(at) < 0.05:
+					body = entry
+					break
+			if body.is_empty():
+				continue
+			var lineup := str(body[3]).begins_with("lineup")
+			for fwd: float in [-0.35, 0.35]:
+				for side: float in [-0.4, 0.4]:
+					var spot := box.get_center() + (Vector3(side * box.size.x, 0, fwd * box.size.z) if long_z else Vector3(fwd * box.size.x, 0, side * box.size.z))
+					spot.y = box.position.y
+					var world := node.global_transform * spot
+					var point := Vector2(world.x, world.z)
+					var ground: float = main.map_layer.rail_height(point) if body[4] else main.map_layer.deck_height(point, int(body[2]))
+					var error := absf(world.y - ground - Buildings3D.ROAD_M - 0.016)
+					if error > worst[0 if lineup else 1]:
+						worst[0 if lineup else 1] = error
+						worst[2] = kind
+	return worst
+
+
+## The riding two-wheelers (or a bus, tram) of `kind` this frame on screen: [how many, the nearest one's distance from the camera, the nearest one's height in pixels].
+func _riders_near(kind: String) -> Array:
+	var camera: Camera3D = layer_3d_view()._camera
+	var screen := Rect2(Vector2.ZERO, main.get_viewport().get_visible_rect().size)
+	main.entities.log_poses = true
+	var count := 0
+	var nearest := INF
+	var smallest := INF
+	for entry: Array in main.entities.pose_log:
+		if entry[0] != kind:
+			continue
+		var ground := Vector3(entry[1].x, main.map_layer.deck_height(entry[1], int(entry[2])), entry[1].y)
+		var top: Vector3 = ground + Vector3.UP * float({"bus": 3.2, "tram": 3.4}.get(kind, 1.8))  # the body's top, or a rider's head
+		if camera.is_position_behind(ground) or not screen.has_point(camera.unproject_position(ground)) or not screen.has_point(camera.unproject_position(top)):
+			continue
+		count += 1
+		var distance: float = camera.global_position.distance_to(ground)
+		if distance < nearest:  # the closest rider is the one the shot is about; farther traffic may be small
+			nearest = distance
+			smallest = absf(camera.unproject_position(top).y - camera.unproject_position(ground).y)
+	return [count, nearest, smallest]
 
 
 ## Chunks under the view loaded and built, the required lamps and buildings in view.
@@ -984,7 +1069,7 @@ func _check_map(centre: Vector2) -> Array:
 		var first := true
 		for corner: Vector2 in body:
 			if MapChunkScript.outdoor_3d and camera_3d != null:  # each corner, on the ground and 3.5 m up, through the 3D camera
-				for height: float in [0.0, 3.5]:
+				for height: float in [0.0, float(scenario.get("lineup_top_m", 3.5))]:
 					var at := Vector3(corner.x, height, corner.y)
 					if camera_3d.is_position_behind(at):
 						in_view = false
@@ -1005,8 +1090,11 @@ func _check_map(centre: Vector2) -> Array:
 					if Geometry2D.is_point_in_polygon(corner, footprint):
 						hidden = true
 		var key := "%d %s" % [i, row[0]]
+		if not scenario.get("lineup_check", true):  # a lineup the scenario checks by other means (the rider mesh, the body pitch)
+			_lineup_seen[key] = "not checked"
+			continue
 		if not in_view:
-			missing.append("lineup %s not in view" % row[0])
+			missing.append("lineup %s not in view (on screen %s of %s)" % [row[0], on_screen, screen_size])
 			_lineup_seen[key] = "not in view"
 			continue
 		if hidden:
@@ -1854,7 +1942,9 @@ func _finish() -> void:
 	var air_frames: int = perf.counters.get("airborne_frames", 0)
 	if air_frames < int(scenario.get("requires", {}).get("airborne_frames", 0)):
 		_measure_failures.append("airborne_frames %d, the scenario needs %d" % [air_frames, scenario["requires"]["airborne_frames"]])
-	if float(scenario.get("capture_airborne_m", 0.0)) > air_at_shot:
+	if scenario.get("capture_apex", false) and air_at_shot < 0.9 * _air_peak:
+		_measure_failures.append("the shot is not at the apex: the car was %.3f m above the road, the arc peaked at %.3f m" % [air_at_shot, _air_peak])
+	if float(scenario.get("capture_airborne_m", 0.0)) > air_at_shot and not scenario.get("capture_apex", false):
 		_measure_failures.append("no shot taken in the air: the car was %.2f m above the road, the scenario needs %.2f m" % [air_at_shot, scenario["capture_airborne_m"]])
 	var ok := _measure_failures.is_empty()
 	var traffic := {"npcs_max": _npc_max, "moving_min": _npc_min_moving if _npc_min_moving < (1 << 30) else 0, "speed_max": _speed_max, "spawn_rejections": rejections}
