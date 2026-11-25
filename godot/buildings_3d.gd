@@ -1569,6 +1569,46 @@ static func riding_leg_joints(side: float) -> Array:
 		Vector3(0.05, HORSE_SADDLE_Y - 0.65, side * 0.27)]
 
 
+## Where a rider sits on each two-wheeler, in the vehicle frame (x forward, y up, z right), measured from the GLBs
+## (tests/cyclist_rider.gd checks them against the meshes): `hip` the hip joint (x, y: on the saddle top or the standing
+## spot), `grip` the handlebar grips (x, y, half the span), `crank` the pedal circle (x, y, radius) or `feet` the two fixed foot
+## spots (back x, front x, sole y), `lean` the forward lean of the upper body in rad.
+const RIDER_RIGS := {
+	"bicycle": {"hip": Vector2(-0.237, 1.086), "grip": Vector3(0.102, 1.10, 0.285), "crank": Vector3(-0.06, 0.28, 0.17), "lean": 0.62},
+	"mountain_bike": {"hip": Vector2(-0.226, 1.089), "grip": Vector3(0.278, 1.083, 0.225), "crank": Vector3(-0.087, 0.29, 0.17), "lean": 0.75},
+	"motorcycle": {"hip": Vector2(-0.156, 1.004), "grip": Vector3(0.48, 1.082, 0.40), "feet": Vector3(-0.07, -0.07, 0.36), "lean": 0.5},
+	"e_scooter": {"hip": Vector2(0.048, SCOOTER_RIDER_SEAT), "grip": Vector3(0.57, 1.20, 0.25), "feet": Vector3(-0.072, 0.168, SCOOTER_DECK_Y), "lean": 0.4},
+	"e_scooter_grab3d": {"hip": Vector2(0.048, SCOOTER_RIDER_SEAT), "grip": Vector3(0.16, 1.084, 0.248), "feet": Vector3(-0.072, 0.168, SCOOTER_DECK_Y), "lean": 0.2},
+}
+static var rider_verts := 0  # the largest rider mesh built (a person's body, not two boxes): the cyclist scenario's readiness
+const CRANK_PHASES := 8  # a pedal turn in this many drawn poses
+const CRANK_PER_M := 0.2  # crank turns per metre rolled (5 m per turn)
+
+
+## The sole of a rider's foot (`side` -1 left, +1 right) on its pedal at crank `phase`, or on its fixed spot; the vehicle frame.
+static func rider_pedal(rig: Dictionary, phase: int, side: float) -> Vector3:
+	if rig.has("crank"):
+		var crank: Vector3 = rig["crank"]
+		var angle := TAU * phase / CRANK_PHASES + (0.0 if side > 0.0 else PI)  # the feet half a turn apart; 0: pedal forward
+		return Vector3(crank.x + cos(angle) * crank.z, crank.y + sin(angle) * crank.z, side * 0.12)
+	var feet: Vector3 = rig["feet"]
+	return Vector3(feet.y if side > 0.0 else feet.x, feet.z, side * 0.12)
+
+
+## The middle joint of a two-segment limb from `top` to `end` (segments l1, l2), bent toward `bend`; the segments stretch
+## when `end` is out of reach (a comic-scale person on a real bike).
+static func _limb_joint(top: Vector3, end: Vector3, l1: float, l2: float, bend: Vector3) -> Vector3:
+	var along := end - top
+	var dist := along.length()
+	var stretch := maxf(1.0, dist / ((l1 + l2) * 0.98))
+	l1 *= stretch
+	l2 *= stretch
+	var axis := along / maxf(dist, 1e-6)
+	var reach := (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * maxf(dist, 1e-6))
+	var sideways := (bend - axis * bend.dot(axis)).normalized()
+	return top + axis * reach + sideways * sqrt(maxf(l1 * l1 - reach * reach, 0.0))
+
+
 static func person_arrays(clothing: Color, pose: String, scale: float, costume: String, variant := 0, winter := false, detail := 1, beard := 0,
 		cart := false) -> Dictionary:
 	var out := _empty_arrays()
@@ -1582,6 +1622,11 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 	var fabric := Color8(224, 170, 54) if style == 4 else clothing.lerp(Color8(88, 91, 92), 0.22)
 	var trousers := Color8(48, 58, 74) if style % 3 == 0 else Color8(38, 43, 53) if style % 3 == 1 else Color8(79, 72, 66)
 	var offset := -0.35 if pose == "sitting" else HORSE_SADDLE_Y - 0.87 if pose == "riding" else -1.34 if pose == "swimming" else 0.0
+	var rig: Dictionary = RIDER_RIGS.get(pose.get_slice(":", 1), {}) if pose.begins_with("rider:") else {}  # "rider:<model>:<crank phase>"
+	var rider_x := 0.0  # a rider is built about its hip, then moved onto the saddle
+	if not rig.is_empty():
+		offset = rig["hip"].y / k - 0.87
+		rider_x = rig["hip"].x
 	var moving := pose.begins_with("walk_") or pose.begins_with("run_")
 	var running := pose.begins_with("run_")
 	var phase := int(pose.split("_")[1]) if moving else 0
@@ -1599,6 +1644,15 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			var z := side * 0.11
 			var lift := maxf(0.0, cos(float(phase) * TAU / 6.0) * side) * (0.15 if running else 0.1) if moving else 0.0
 			var hip := Vector3(0.0, 0.87 + offset, z) * k
+			if not rig.is_empty():  # feet on the pedals or the deck: the knee is where two segments reaching them bend
+				var pedal := rider_pedal(rig, int(pose.get_slice(":", 2)), side)
+				var foot := Vector3(pedal.x - rider_x - 0.07 * k, pedal.y + 0.08 * k, z * 1.1)  # the shoe's ball under the pedal, its sole on it
+				var knee := _limb_joint(hip, foot, 0.42 * k, 0.36 * k, Vector3.RIGHT)
+				_round_limb(out, hip, knee, 0.094 * k, 0.075 * k, trousers, 0, detail)
+				_round_part(out, knee, Vector3(0.076, 0.074, 0.075) * 1.2 * k, trousers, 0, detail)
+				_round_limb(out, knee, foot, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
+				_round_part(out, foot + Vector3(0.07, -0.003, 0.0) * k, Vector3(0.14, 0.077, 0.1) * k, Color8(42, 42, 46), 4, detail)
+				continue
 			if pose == "riding":
 				var j := riding_leg_joints(side)
 				_round_limb(out, j[0] * k, j[1] * k, 0.094 * k, 0.075 * k, trousers, 0, detail)
@@ -1613,6 +1667,10 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			_round_limb(out, knee, ankle, 0.073 * k, 0.046 * k, skin if shorts else trousers, 1 if shorts else 0, detail)
 			_round_part(out, ankle + Vector3(0.07, -0.003, 0.0) * k, Vector3(0.14, 0.077, 0.1) * k, Color8(42, 42, 46), 4, detail)  # chunky shoe, sole kept
 	var torso_y := 1.0965 + up + breath  # short round torso: 0.85 tall, its hem kept at 0.85
+	var upper_start: int = out["verts"].size()  # a rider leans everything from here on about the hip
+	var upper_shadow_start: int = out["shadow"].size()
+	var lean := Basis(Vector3.BACK, -float(rig.get("lean", 0.0)))
+	var hip_pivot := Vector3(0.0, (0.87 + offset) * k, 0.0)
 	var torso_start: int = out["verts"].size()
 	_garment_torso(out, torso_y * k, k, fabric, jacket, (0.94 + 0.04 * (variant % 4)) * 1.15, detail, 0.85)
 	if style == 4:
@@ -1630,6 +1688,10 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 		if cart and pose != "sitting":  # hands on the cart handle
 			elbow = Vector3(0.2, 1.06 + up, side * 0.25) * k
 			wrist = Vector3(CART_HANDLE_X - 0.03, CART_TOP_Y, side * 0.22)
+		if not rig.is_empty():  # hands on the grips: the wrist is where the leaned body's hand lands, undone to the upright build
+			var grip: Vector3 = rig["grip"]
+			wrist = hip_pivot + lean.inverse() * (Vector3(grip.x - rider_x, grip.y, side * grip.z) - hip_pivot)
+			elbow = _limb_joint(shoulder, wrist, 0.24 * k, 0.22 * k, Vector3(0.0, -1.0, side * 0.8))
 		_round_limb(out, shoulder, elbow, 0.072 * k, 0.057 * k, fabric, 0, detail)
 		_round_part(out, elbow, Vector3(0.058, 0.06, 0.058) * 1.2 * k, fabric, 0, detail)
 		_round_limb(out, elbow, wrist, 0.055 * k, 0.042 * k, fabric if jacket else skin, 0 if jacket else 1, detail)
@@ -1669,6 +1731,14 @@ static func person_arrays(clothing: Color, pose: String, scale: float, costume: 
 			0.10 * hk.y, 0.015 * hk.y, Color8(190, 30, 35), 0, detail)
 	if cart:
 		_cart(out, detail)
+	if not rig.is_empty():
+		for key in ["verts", "shadow"]:
+			var verts: PackedVector3Array = out[key]
+			for i in range(upper_start if key == "verts" else upper_shadow_start, verts.size()):
+				verts[i] = hip_pivot + lean * (verts[i] - hip_pivot)
+			for i in verts.size():
+				verts[i].x += rider_x
+			out[key] = verts
 	return out
 
 
