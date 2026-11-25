@@ -914,9 +914,13 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 	length = maxf(length, _px(5.0))
 	width = maxf(width, _px(2.5))
 	if Buildings3D.opaque and Buildings3D.current != null and kind in VEHICLES_3D:  # step 6: every vehicle in the 3D view
+		var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id)
+		var extra := {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
+			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4}
+		if kind in Buildings3D.MODEL_VARIANTS:  # the model variant comes from the id
+			extra["id"] = vehicle_id
 		Buildings3D.current.vehicle(kind, c, heading, length, width, color, lamp_bits(engine_on, braking, reversing, turn_signal, signal_elapsed),
-			float(deck_height.call(c, _layer)), {"riding": engine_on and not fallen, "fallen": fallen, "plough": ploughing and kind == "tractor",
-			"beacon": ploughing and kind == "tractor" and fmod(_clock, 0.8) < 0.4}.merged({"id": vehicle_id} if kind in Buildings3D.MODEL_VARIANTS else {}))
+			pose.x, extra, Vector2(pose.y, pose.z))
 		return
 	var f := _forward(heading)
 	var r := _right(heading)

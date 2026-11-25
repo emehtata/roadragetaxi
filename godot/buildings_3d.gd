@@ -1227,7 +1227,7 @@ static func _bike_lamps(out: Dictionary, hl: float, lamps: int, rear_y := 0.72) 
 ## built once per look (`key`) by `build` (car_arrays-style arrays), placed
 ## on the road at `at` facing `heading`, `elevation` up (a deck), rolled
 ## `roll` about its length (fallen over).
-func place_body(key: String, build: Callable, at: Vector2, heading: float, elevation := 0.0, roll := 0.0, organic := false) -> void:
+func place_body(key: String, build: Callable, at: Vector2, heading: float, elevation := 0.0, roll := 0.0, organic := false, tilt := Vector2.ZERO) -> void:
 	if not _car_meshes.has(key):
 		if _car_meshes.size() > 1024:  # ponytail: drop the whole cache, an LRU if colours ever vary per frame
 			_car_meshes.clear()
@@ -1243,7 +1243,7 @@ func place_body(key: String, build: Callable, at: Vector2, heading: float, eleva
 		_cars_root.add_child(body)
 		_cars_root.add_child(caster)
 		_car_nodes.append([body, caster])
-	var place := Transform3D(Basis(Vector3.UP, heading) * Basis(Vector3.RIGHT, roll), to_3d(at, (ROAD_M + 0.016 if opaque else 0.0) + elevation))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
+	var place := Transform3D(Basis(Vector3.UP, heading) * Basis(Vector3.BACK, tilt.x) * Basis(Vector3.RIGHT, tilt.y) * Basis(Vector3.RIGHT, roll), to_3d(at, (ROAD_M + 0.016 if opaque else 0.0) + elevation))  # on the road surface (step 3), not in it  # local +x forward, +z right (entity_layer _forward/_right)
 	for i in 2:
 		var node: MeshInstance3D = _car_nodes[_cars_used][i]
 		node.mesh = _car_meshes[key][i]
@@ -1302,7 +1302,7 @@ func _flush_animals() -> void:
 ## Other vehicles: their GLB in the opaque view where one exists (any distance),
 ## else the procedural mesh. `extra`: "riding", "fallen",
 ## "plough", "beacon", "profile" (a train car's), "rider" (its colour).
-func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}) -> void:
+func vehicle(kind: String, at: Vector2, heading: float, length: float, width: float, color: Color, lamps := 0, elevation := 0.0, extra := {}, tilt := Vector2.ZERO) -> void:
 	var id: Variant = extra.get("id", 0)
 	if extra.has("id"):  # out of the cache keys below: one shared mesh per look, not per vehicle
 		extra = extra.duplicate()
@@ -1310,18 +1310,18 @@ func vehicle(kind: String, at: Vector2, heading: float, length: float, width: fl
 	if opaque and kind == "train":
 		var profile: String = extra.get("profile", "standard")
 		var model_kind := "train_locomotive" if profile == "locomotive" else "train_coach"
-		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation)
+		place_model_car(model_kind, at, heading, length, width, RS.TRAIN_PROFILES.get(profile, RS.TRAIN_PROFILES["standard"])[0], elevation, 0, tilt)
 		return
 	var model_kind := vehicle_model_kind(kind, id)
 	if opaque and has_model(kind):
-		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps)
+		place_model_car(model_kind, at, heading, length, width, color, elevation, lamps, tilt)
 		var detail_key := "vd|%s|%.2f|%.2f|%d|%s" % [model_kind, length, width, lamps, str(extra)]
-		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra, model_kind), at, heading, elevation)
+		place_body(detail_key, model_vehicle_details.bind(kind, length, width, color, lamps, extra, model_kind), at, heading, elevation, 0.0, false, tilt)
 		return
 	var key := "v|%s|%.2f|%.2f|%s|%d|%s" % [kind, length, width, color.to_html(false), lamps, extra]
 	var fallen: bool = extra.get("fallen", false)
 	place_body(key, func() -> Dictionary: return vehicle_arrays(kind, length, width, color, lamps, extra), at, heading,
-		elevation + (width * 0.5 if fallen else 0.0), PI / 2.0 if fallen else 0.0)
+		elevation + (width * 0.5 if fallen else 0.0), PI / 2.0 if fallen else 0.0, false, tilt)
 
 
 static func _empty_arrays() -> Dictionary:

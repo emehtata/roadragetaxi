@@ -34,6 +34,7 @@ func run() -> void:
 	layer = Entities.new()
 	layer.view_rect = Rect2(-1000, -1000, 3000, 3000)
 	test_bus_pitch_on_grade()
+	test_wheels_on_the_ground()
 	test_far_bodies_stay_level()
 	layer.free()
 	print("body_pose: %d failures" % failures)
@@ -88,6 +89,34 @@ func test_stance_is_immediate_and_frame_rate_independent() -> void:
 			pose = layer.body_pose(Vector2(200, -100), 0.0, 4.5, 1.8, 0, "mover", Callable(), false, 1.0 / fps)
 		var want := atan(0.06) * (1.0 - exp(-0.2 / Entities.TILT_EASE_S))
 		check(absf(pose.y - want) < 0.004, "%.0f fps: after 0.2 s pitch %.4f rad, the time constant gives %.4f" % [fps, pose.y, want])
+
+
+## Criterion 7: the wheel contact points of every non-car body are within 0.05 m of the road surface (the model's
+## 0.028 m ride height is in); tilted bodies on a 6 % slope, at two headings.
+func test_wheels_on_the_ground() -> void:
+	_ground(0.06)
+	for kind: String in ["bus", "truck", "tractor", "camper_van", "bicycle", "e_scooter", "motorcycle"]:
+		for heading: float in [0.0, 0.7]:
+			var c := Vector2(200, -100)
+			var length := 12.0 if kind == "bus" else 7.5 if kind == "truck" else 4.0 if kind == "tractor" else 6.2 if kind == "camper_van" else 1.8 if kind == "bicycle" else 1.2 if kind == "e_scooter" else 2.2
+			var width := 2.55 if kind == "bus" else 2.3 if kind in ["truck", "tractor", "camper_van"] else 0.6
+			var pose := _settle(c, heading, length, width, kind + str(heading))
+			renderer.begin_cars()
+			renderer.vehicle(kind, c, heading, length, width, Color.RED, 0, pose.x, {}, Vector2(pose.y, pose.z))
+			var model_kind := B3.vehicle_model_kind(kind, 0)
+			var node: Node3D = renderer._model_nodes[model_kind][0]
+			var box := B3.merged_model(model_kind).get_aabb()
+			var long_z := box.size.z >= box.size.x
+			var worst := 0.0
+			for fwd: float in [-0.35, 0.35]:
+				for side: float in [-0.4, 0.4]:
+					var spot := box.get_center() + (Vector3(side * box.size.x, 0, fwd * box.size.z) if long_z else Vector3(fwd * box.size.x, 0, side * box.size.z))
+					spot.y = box.position.y
+					var world := node.transform * spot
+					worst = maxf(worst, absf(world.y - layer.deck_height.call(Vector2(world.x, world.z), 0) - B3.ROAD_M - 0.016))
+			renderer.end_cars()
+			print("%s heading %.1f: wheels off the surface by %.4f m" % [kind, heading, worst])
+			check(worst <= 0.05, "%s heading %.1f: wheel points %.3f m from the road surface" % [kind, heading, worst])
 
 
 ## Criterion 9: beyond 120 m of the camera a body stays level and costs no wheel lookups; within it 4 per body.
