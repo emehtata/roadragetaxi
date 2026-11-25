@@ -102,6 +102,11 @@ var _lake_ice = null  # server lake_ice_holds (modelled thickness); old servers:
 var _trees_leafless := false
 var _forest_rows: Array = []  # --outdoor-3d: forest_trees, [layer point, kind, variation]
 var _forest_task := -1
+var _forest_build := 0
+var _forest_results := {}  # each worker owns its result until the matching deferred publish
+const FOREST_KIT_CELL_M := 32.0
+var _forest_detail_cell := Vector2i(2147483647,2147483647)
+var _forest_detail_at := Vector2.INF
 var _lamp_task := -1  # the 3D lamp posts' arrays, built on a worker
 var _lamp_build := 0  # the newest lamp build: an older one's arrays are dropped
 var forest_ms := [0.0, 0.0]  # the 3D forest's CPU time: placement, instance build (worker threads)
@@ -119,6 +124,10 @@ func _notification(what: int) -> void:
 			WorkerThreadPool.wait_for_task_completion(_building_task)
 		if _forest_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_forest_task)
+		for result: Dictionary in _forest_results.values():
+			var node = result.get("node")
+			if is_instance_valid(node) and node.get_parent() == null: node.free()
+		_forest_results.clear()
 		if _lamp_task >= 0:
 			WorkerThreadPool.wait_for_task_completion(_lamp_task)
 		for node in [_pools, _floods, _heads, building_node] + meshes_3d:
@@ -268,6 +277,7 @@ func setup(message: Dictionary, origin: Vector2) -> void:
 	ground_heights = prepared.get("ground_heights", {})
 	_water_ripple_spots = prepared["water_ripple_spots"]
 	Perf.add("chunk_layers", Time.get_ticks_usec() - started)
+	_set_forest_view(_building_view)
 	_build_2_5d()
 	set_wetness(_wetness)
 
@@ -1076,6 +1086,7 @@ func _queue_meshes(arrays: Dictionary, build_id := -1) -> void:
 
 ## Remove a chunk's queued work (it is being freed), with any surfaces built so far.
 static func drop_queued(chunk) -> void:
+	chunk._forest_build += 1  # an unloaded chunk cannot publish a pending camera-cell result
 	for entry in ready_meshes.filter(func(e): return e[0] == chunk):
 		_free_nodes(entry[4])
 	ready_meshes = ready_meshes.filter(func(e): return e[0] != chunk)
@@ -1170,6 +1181,7 @@ func _buildings_ready(volumes: Dictionary) -> void:
 
 func set_building_view(view_centre: Vector2) -> void:
 	_building_view = view_centre
+	_set_forest_view(view_centre)
 	if buildings_3d:
 		for node in _canopy_layers:
 			node.queue_redraw()
@@ -1954,18 +1966,20 @@ static func fence_lines(points: PackedVector2Array) -> Array:
 ## --outdoor-3d: this chunk's trees (as the 2D crowns: seasonal colour, a
 ## leafless birch's bare crown, a felled one lying) and standing bollards as
 ## buildings_3d instances, rebuilt when the layer would redraw.
-func _tree_row(kind: String, variation: float) -> Array:
+func _tree_row(kind: String, variation: float, weights: Array = [], leafless := -1) -> Array:
+	var season: Array = _season if weights.is_empty() else weights
+	var bare := _trees_leafless if leafless < 0 else bool(leafless)
 	var style := tree_style(kind, variation)
 	var crown: Color = style["crown"]
 	var radius: float = style["radius"]
 	if kind == "pine" or kind == "spruce":
-		crown = crown.lerp(Color8(226, 234, 238), clampf(_season[0], 0.0, 1.0))
-	elif _trees_leafless and kind == "birch":
-		crown = Color8(91, 70, 48).lerp(Color8(226, 234, 238), 0.6 * clampf(_season[0], 0.0, 1.0))
+		crown = crown.lerp(Color8(226, 234, 238), clampf(season[0], 0.0, 1.0))
+	elif bare and kind == "birch":
+		crown = Color8(91, 70, 48).lerp(Color8(226, 234, 238), 0.6 * clampf(season[0], 0.0, 1.0))
 		radius *= 0.6
 	else:
-		crown = seasonal_color(crown, _season)
-	return [Vector2.ZERO, kind, radius, crown, style["trunk"], NAN, _trees_leafless and kind == "birch"]
+		crown = seasonal_color(crown, season)
+	return [Vector2.ZERO, kind, radius, crown, style["trunk"], NAN, bare and kind == "birch"]
 
 
 func _trees_3d() -> void:
@@ -1976,13 +1990,7 @@ func _trees_3d() -> void:
 		row[0] = MapMath.point(_origin, tree[0], tree[1])
 		row[5] = float(_fallen[key]) if _fallen.has(key) else NAN
 		rows.append(row)
-	if not _forest_rows.is_empty() and _forest_look != [_season, _trees_leafless]:  # rebuilt for the season only, not per felled tree
-		_forest_look = [_season.duplicate(), _trees_leafless]
-		if _forest_task >= 0:
-			WorkerThreadPool.wait_for_task_completion(_forest_task)
-		B3._tree_mesh("trunk")  # the shared meshes made here, never raced by two workers
-		# Built on a worker: thousands of instances took 20-70 ms on the main thread per forest chunk.
-		_forest_task = WorkerThreadPool.add_task(func(): _forest_ready.call_deferred(_forest_node()))
+	_request_forest()
 	for obj in _data.get("scenery_objects", []):
 		if obj[2] == "shrub":
 			rows.append([MapMath.point(_origin, obj[0], obj[1]), "shrub", 0.6, seasonal_color(Color8(52, 96, 44), _season), Color.BLACK, NAN])
@@ -2092,25 +2100,63 @@ func _lamps_ready(arrays: Dictionary, build_id: int) -> void:
 	Perf.add("chunk_lamps_main", Time.get_ticks_usec() - started)
 
 
-## A rebuilt 3D part of this chunk replaces the old one in the 3D view.
-func _forest_node() -> Node3D:
+## Only cell crossings change the GLB subset; far chunks use one stable disabled key.
+func _set_forest_view(centre: Vector2) -> void:
+	if not outdoor_3d or not buildings_3d or _forest_rows.is_empty(): return
+	var world := Vector2(_origin.x+centre.x,_origin.y-centre.y)
+	var cell := Vector2i(floori(world.x/FOREST_KIT_CELL_M),floori(world.y/FOREST_KIT_CELL_M))
+	var at := MapMath.point(_origin,(cell.x+.5)*FOREST_KIT_CELL_M,(cell.y+.5)*FOREST_KIT_CELL_M)
+	if not _bounds_rect.grow(B3.FOREST_KIT_RADIUS_M).has_point(at):
+		cell = Vector2i(2147483646,2147483646)
+		at = Vector2.INF
+	if cell == _forest_detail_cell: return
+	_forest_detail_cell = cell; _forest_detail_at = at
+	if is_inside_tree(): _request_forest()
+
+
+func _request_forest() -> void:
+	var look := [_season,_trees_leafless,_forest_detail_cell]
+	if _forest_rows.is_empty() or _forest_look == look: return
+	_forest_look = [_season.duplicate(),_trees_leafless,_forest_detail_cell]
+	_forest_build += 1
+	var build_id := _forest_build
+	if _forest_task >= 0: WorkerThreadPool.wait_for_task_completion(_forest_task)
+	B3._tree_mesh("trunk")
+	if _forest_detail_at.is_finite():
+		for kind: String in ["pine","spruce","birch"]: B3.nature_mesh(kind)
+	var season := _season.duplicate()
+	var leafless := _trees_leafless
+	var detail_at := _forest_detail_at
+	var result := {}
+	_forest_results[build_id] = result
+	_forest_task = WorkerThreadPool.add_task(func():
+		var node := _forest_node(season,leafless,detail_at)
+		result["node"] = node
+		_forest_ready.call_deferred(node,build_id))
+
+
+func _forest_node(season: Array, leafless: bool, detail_at: Vector2) -> Node3D:
 	var started := Time.get_ticks_usec()
 	var rows := []
 	for tree in _forest_rows:
-		var row := _tree_row(tree[1], tree[2])
+		var row := _tree_row(tree[1],tree[2],season,int(leafless))
 		row[0] = tree[0]
-		row[2] *= 1.15 + 0.35 * tree[2]  # forest-grown: taller than a park tree
+		row[2] *= 1.15 + .35 * tree[2]
 		rows.append(row)
-	var node := B3.forest_node(rows, ground_heights)
-	forest_ms[1] = (Time.get_ticks_usec() - started) / 1000.0
+	var node := B3.forest_node(rows,ground_heights,detail_at)
+	node.set_meta("forest_build_ms",(Time.get_ticks_usec()-started)/1000.0)
 	return node
 
 
-func _forest_ready(node: Node3D) -> void:
-	if _forest_task >= 0:
-		WorkerThreadPool.wait_for_task_completion(_forest_task)
-		_forest_task = -1
-	_set_dynamic_3d("forest", node)
+func _forest_ready(node: Node3D, build_id: int) -> void:
+	_forest_results.erase(build_id)
+	if build_id != _forest_build or not is_inside_tree():
+		node.free()
+		return
+	WorkerThreadPool.wait_for_task_completion(_forest_task)
+	_forest_task = -1
+	forest_ms[1] = node.get_meta("forest_build_ms")
+	_set_dynamic_3d("forest",node)
 
 
 func _set_dynamic_3d(name: String, node: Node3D) -> void:

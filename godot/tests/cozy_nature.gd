@@ -54,7 +54,9 @@ func test_batch_lifecycle_and_lod() -> void:
 		check(node.get_child(0).layers==B3.LAYER_BUILDINGS,"tree map layer retained")
 		node.free()
 	var forest := B3.forest_node(rows,{})
-	check(forest.get_children().all(func(n):return not n.has_meta("nature_kind")),"dense forest uses bounded original geometry")
+	check(forest.get_children().any(func(n):return n.get_meta("nature_kind","")=="pine" and n.multimesh.mesh==shared and n.visibility_range_end==B3.FOREST_NEAR_M),"dense forest near LOD uses the complete cached kit source")
+	check(forest.get_children().filter(func(n):return n.visibility_range_begin>0.0).all(func(n):return not n.has_meta("nature_kind")),"dense forest far LOD retains simple geometry")
+	check(forest.get_children().filter(func(n):return n.has_meta("nature_kind")).all(func(n):return n.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_OFF) and forest.get_children().any(func(n):return n.cast_shadow==GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY),"forest GLB visuals reuse bounded original shadow proxies")
 	check(forest.get_children().any(func(n):return n.visibility_range_begin==B3.FOREST_NEAR_M),"simple distant LOD retained")
 	forest.free()
 

@@ -763,6 +763,74 @@ func _nature_readiness(camera_3d: Camera3D, hud: Array) -> Array:
 	return ["no complete unobscured mapped Cozy Nature model at useful screen size"]
 
 
+## Inspect only the requested normally streamed forest, including full source GLB instances.
+func _forest_target_readiness() -> Array:
+	var requested: Dictionary = scenario.get("requires", {}).get("forest_target", {})
+	if requested.is_empty(): return []
+	var bounds: Array = requested["bounds"]
+	var origin: Vector2 = main.map_layer.origin
+	var first := MapMath.point(origin, bounds[0], bounds[3])
+	var target := Rect2(first, Vector2(bounds[2] - bounds[0], bounds[3] - bounds[1]))
+	var stats := {"expected_rows": 0, "near_crowns": 0, "far_crowns": 0, "glb_instances": 0, "bad_glb_transforms": 0, "active_crowns": 0, "useful_crowns": 0, "pending_chunks": 0, "forest_nodes": 0, "source_triangles": {}}
+	var layer = main.map_layer.buildings_3d
+	if not is_instance_valid(layer): return ["forest target has no 3D layer"]
+	var camera: Camera3D = layer._camera
+	var screen := main.get_viewport().get_visible_rect()
+	for chunk in main.map_layer._chunks.values():
+		if not chunk._bounds_rect.intersects(target): continue
+		var expected := {}
+		for tree: Array in chunk._forest_rows:
+			if not target.has_point(tree[0]): continue
+			stats.expected_rows += 1
+			var row: Array = chunk._tree_row(tree[1],tree[2])
+			row[0] = tree[0]; row[2] *= 1.15 + .35 * tree[2]
+			expected[Vector2i(roundi(tree[0].x*10),roundi(tree[0].y*10))] = row
+		if chunk._forest_task >= 0: stats.pending_chunks += 1
+		var forest = chunk._dynamic_3d.get("forest")
+		if not is_instance_valid(forest): continue
+		stats.forest_nodes += 1
+		for batch: MultiMeshInstance3D in forest.get_children():
+			if batch.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY: continue
+			var mesh := batch.multimesh.mesh
+			if mesh == Buildings3D._tree_mesh("trunk"): continue
+			var kind: String = batch.get_meta("nature_kind", "")
+			var glb := not kind.is_empty() and mesh == Buildings3D.nature_mesh(kind)
+			var far: bool = batch.visibility_range_begin > 0.0
+			var range_bounds: AABB = batch.custom_aabb if batch.custom_aabb.size != Vector3.ZERO else batch.get_aabb()
+			var distance := camera.global_position.distance_to(batch.global_transform * range_bounds.get_center())
+			var active := batch.is_visible_in_tree() and batch.layers & camera.cull_mask != 0 and distance >= batch.visibility_range_begin and (batch.visibility_range_end <= 0.0 or distance < batch.visibility_range_end)
+			var aabb: AABB = mesh.get_aabb()
+			var source_base := Vector3(aabb.get_center().x,aabb.position.y,aabb.get_center().z)
+			for i in batch.multimesh.instance_count:
+				var transform := batch.global_transform * batch.multimesh.get_instance_transform(i)
+				var anchor: Vector3 = transform * source_base if glb else transform.origin
+				if not target.has_point(Vector2(anchor.x,anchor.z)): continue
+				stats["far_crowns" if far else "near_crowns"] += 1
+				if glb and not far:
+					stats.glb_instances += 1
+					var key := Vector2i(roundi(anchor.x*10),roundi(anchor.z*10))
+					if not expected.has(key) or expected[key][1]!=kind or not transform.is_equal_approx(batch.global_transform * Buildings3D.nature_transform(expected[key],chunk.ground_heights)):
+						stats.bad_glb_transforms += 1
+					if not stats.source_triangles.has(kind):
+						stats.source_triangles[kind] = 0
+						for surface in mesh.get_surface_count(): stats.source_triangles[kind] += mesh.surface_get_array_index_len(surface)/3
+				if not active or (requested.get("require_glb",false) and not glb): continue
+				stats.active_crowns += 1
+				var centre: Vector3 = transform * aabb.get_center()
+				if not camera.is_position_in_frustum(centre): continue
+				var top: Vector3 = transform * Vector3(aabb.get_center().x, aabb.end.y, aabb.get_center().z)
+				var bottom: Vector3 = transform * Vector3(aabb.get_center().x, aabb.position.y, aabb.get_center().z)
+				if screen.has_point(camera.unproject_position(centre)) and camera.unproject_position(top).distance_to(camera.unproject_position(bottom)) >= float(requested["min_height_px"]): stats.useful_crowns += 1
+	_counts["forest_target"] = stats
+	var missing := []
+	if stats.expected_rows < int(requested["min_crowns"]): missing.append("forest target has only %d expected mapped rows" % stats.expected_rows)
+	if stats.near_crowns != stats.expected_rows or stats.far_crowns != stats.expected_rows: missing.append("forest target population mismatch: %s" % stats)
+	if requested.get("require_glb",false) and (stats.glb_instances != stats.expected_rows or stats.bad_glb_transforms > 0): missing.append("forest target lacks complete correctly placed Cozy Nature sources: %s" % stats)
+	if stats.pending_chunks > 0: missing.append("forest target batches still pending")
+	if stats.useful_crowns < int(requested["min_crowns"]): missing.append("forest target has only %d useful visible crowns: %s" % [stats.useful_crowns, stats])
+	return missing
+
+
 ## What the scenario needs and the scene does not show yet ([] when ready).
 func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
@@ -878,6 +946,7 @@ func check() -> Array:
 		_counts["carts_in_view"] = seen
 		if seen < int(scenario["requires"]["carts_in_view"]):
 			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
+	missing.append_array(_forest_target_readiness())
 	var requires: Dictionary = scenario.get("requires", {})
 	if requires.get("rider_parts", false):  # docs/specs/terrain-following-bodies.md part 4: a posed person rides, not two boxes
 		var person: int = Buildings3D.person_arrays(Color.RED, "walk_0", 1.0, "", 0)["verts"].size()
@@ -2002,6 +2071,8 @@ func _moving(shown: Dictionary) -> int:
 func _forest_stats() -> Dictionary:
 	var near := 0
 	var far := 0
+	var kit := 0
+	var kit_max := 0
 	var place := []
 	var build := []
 	for chunk in main.map_layer._chunks.values():
@@ -2010,13 +2081,18 @@ func _forest_stats() -> Dictionary:
 			continue
 		place.append(chunk.forest_ms[0])
 		build.append(chunk.forest_ms[1])
+		var chunk_kit := 0
 		for batch: MultiMeshInstance3D in forest.get_children():
+			if batch.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY: continue
+			if batch.has_meta("nature_kind"): chunk_kit += batch.multimesh.instance_count
 			if batch.visibility_range_begin > 0.0:
 				far += batch.multimesh.instance_count
 			elif batch.multimesh.mesh != Buildings3D._tree_mesh("trunk"):
 				near += batch.multimesh.instance_count
+		kit += chunk_kit
+		kit_max = maxi(kit_max,chunk_kit)
 	var view_3d: RID = Buildings3D.current._view.get_viewport_rid() if Buildings3D.current != null else RID()
-	return {"trees_loaded": near, "far_lod_crowns_loaded": far, "forest_chunks": place.size(),
+	return {"glb_trees_loaded":kit,"max_glb_trees_per_chunk":kit_max,"trees_loaded": near, "far_lod_crowns_loaded": far, "forest_chunks": place.size(),
 		"place_ms_max": place.max() if place else 0.0, "build_ms_max": build.max() if build else 0.0,
 		"build_ms_total": build.reduce(func(a, b): return a + b, 0.0),
 		"draw_calls": Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),

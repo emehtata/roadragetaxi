@@ -9004,6 +9004,7 @@
       "chase_zoom": "min",
       "lineup_top_m": 1.8,
       "lineup_check": false
-    }
+    },
+    {"id": "oulu_screenshot_forest_day", "description": "Mapped woodland ahead at the reported Helmikkäkuja screenshot pose", "why": "Screenshot screenshot_1795634645578000128 at the Helmikkäkuja road end. The actual cached OSM 16,155 m² forest contains the 20 by 20 m target around 425319.37/7216782.75, about 56 m northwest of the taxi; the polygon has no surveyed trees, so normal streamed Cozy Nature GLB instances there must be visible in chase view.", "city": "Oulu", "pose": [425360.4558, 7216744.0155, -3.31216944], "box_km": 3, "start_time": "2026-06-20T13:44", "weather": "clear", "cloud": 0.95, "wetness": [0, 0.05], "sun_altitude_deg": [30, 90], "zoom": 9, "camera": "third", "server_args": ["--no-auto-fetch"], "isolated_settings": true, "resolution": [1280, 720], "measure_s": 2, "requires": {"dem_ground": true, "forest_target": {"bounds": [425309.37, 7216772.75, 425329.37, 7216792.75], "min_crowns": 5, "min_height_px": 20, "require_glb": true}}}
   ]
 }

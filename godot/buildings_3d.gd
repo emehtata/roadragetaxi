@@ -3163,6 +3163,7 @@ static func _structures(out: Dictionary, ground: Dictionary) -> void:
 ## [position, kind, crown radius, crown colour, trunk colour, felled angle or NAN, optional leafless].
 static var _tree_meshes := {}
 const FOREST_NEAR_M := 400.0  # forest_node: detailed crowns nearer (the chunk's centre), simple ones beyond
+const FOREST_KIT_RADIUS_M := 72.0  # source GLBs only in this ground circle, fewer than 1,000 grid candidates
 
 
 ## A crown built from primitives into one mesh: [mesh, transform] parts,
@@ -3351,16 +3352,41 @@ static func tree_parts(rows: Array, bollards: PackedVector2Array, grid := {}, fa
 	return parts
 
 
-## A chunk's procedural forest (map_chunk.forest_trees): the species'
-## crowns within FOREST_NEAR_M of the camera, simple cones and blobs beyond
-## (Godot's visibility ranges, per chunk instance batch).
-static func forest_node(rows: Array, grid: Dictionary) -> Node3D:
-	var node := trees_node(rows, PackedVector2Array(), grid, false, false)
+## GLBs in a bounded circle around the stable camera cell; other rows retain
+## their crowns. Identical batch bounds make the 400 m near/far switch agree.
+static func forest_node(rows: Array, grid: Dictionary, detail_at := Vector2.ZERO) -> Node3D:
+	var detailed := []
+	var other := []
+	var bounds := AABB()
+	for row: Array in rows:
+		if detail_at.is_finite() and row[0].distance_squared_to(detail_at) <= FOREST_KIT_RADIUS_M * FOREST_KIT_RADIUS_M:
+			detailed.append(row)
+		else:
+			other.append(row)
+		var radius: float = row[2]
+		var box := AABB(to_3d(row[0],ground_height(grid,row[0]))-Vector3(radius,0,radius),Vector3(radius*2,radius*6,radius*2))
+		bounds = box if bounds.size == Vector3.ZERO else bounds.merge(box)
+	var node := trees_node(detailed, PackedVector2Array(), grid, false, true)
+	for child: GeometryInstance3D in node.get_children(): child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Keep the original forest shadow cost and silhouettes for the authored GLB visuals.
+	var shadows := trees_node(detailed, PackedVector2Array(), grid, false, false)
+	for child: GeometryInstance3D in shadows.get_children():
+		child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		shadows.remove_child(child); node.add_child(child)
+	shadows.free()
+	node.set_meta("forest_detail_at",detail_at)
+	node.set_meta("forest_detail_points",PackedVector2Array(detailed.map(func(row): return row[0])))
+	var middle := trees_node(other, PackedVector2Array(), grid, false, false)
+	for child in middle.get_children():
+		middle.remove_child(child); node.add_child(child)
+	middle.free()
 	for child: GeometryInstance3D in node.get_children():
 		child.visibility_range_end = FOREST_NEAR_M
+		child.custom_aabb = bounds
 	var far := trees_node(rows, PackedVector2Array(), grid, true, false)
 	for child: GeometryInstance3D in far.get_children():
 		child.visibility_range_begin = FOREST_NEAR_M
+		child.custom_aabb = bounds
 		child.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		far.remove_child(child)
 		node.add_child(child)
