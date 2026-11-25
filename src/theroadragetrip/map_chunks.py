@@ -639,7 +639,7 @@ class ChunkIndex:
             self._add("crossings", ((c.x, c.y),), [round(c.x, 2), round(c.y, 2), round(c.direction_angle or 0.0, 3),
                                                    round(getattr(c, "width_m", 5.0), 2), round(getattr(c, "length_m", 2.2), 2)])
         for b in getattr(world, "speed_bumps", ()):
-            if underground(b.x, b.y):
+            if underground(b.x, b.y) or getattr(b, "layer", 0) != 0:  # the client's bumps are surface road shapes (a bridge's has no ground road)
                 continue
             self._add("speed_bumps", ((b.x, b.y),), [round(b.x, 2), round(b.y, 2), round(b.direction_angle or 0.0, 3),
                                                      round(getattr(b, "width_m", 3.5), 2), getattr(b, "kind", "bump")])

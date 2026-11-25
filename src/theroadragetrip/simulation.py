@@ -42,6 +42,7 @@ from .physics import (
 )
 from .station_passengers import StationPassengerView, track_checker
 from .taxi import TaxiState
+from .vertical import world_bump_field
 from .viewport import get_viewport_bounds
 
 RAGE_DISTANCE_TO_FULL_M = 400.0
@@ -809,6 +810,7 @@ def advance_simulation(
         npc_manager.snowy = weather.weather_type.value == "snow" or weather.road_snow > 0.1
         plough_positions = {v.vehicle_id: (v.x, v.y) for v in npc_manager.vehicles
                             if v.vehicle_type == "tractor" and v.vehicle_id in npc_manager.drivers}
+        npc_manager.bump_field = world_bump_field(world)  # NPC drivers slow down for the speed bumps ahead (npc.py)
         npc_manager.update(
             dt, car.x, car.y, residents, traffic_mgr, ways,
             spatial_grid=spatial_grid, parking_spaces=parking_spaces,

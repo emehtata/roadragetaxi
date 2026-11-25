@@ -177,6 +177,8 @@ NPC_CORNER_BRAKING_DECEL_MPS2 = 3.0  # comfortable braking rate approaching a co
 NPC_TURN_SIGNAL_MIN_DISTANCE_M = 30.0  # start blinking at least this far before a turn...
 NPC_TURN_SIGNAL_LEAD_S = 3.0  # ...or this many seconds of travel ahead, whichever is farther
 NPC_CORNER_LOOKAHEAD_M = 40.0  # how far ahead to start braking for an upcoming turn
+NPC_SPEED_BUMP_MPS = 25.0 / 3.6  # game policy: a driver slows to this over a speed bump, as the player is asked to (no penalty at or under 25 km/h)
+NPC_SPEED_BUMP_LOOKAHEAD_M = 30.0  # and starts braking for it this far ahead, at NPC_CORNER_BRAKING_DECEL_MPS2
 LANE_BIAS_LOOKAHEAD_M = 20.0  # start easing into a turn lane this far before the corner (intersection-rules section 5)
 # vehicle-population v2: the "car" vehicle plugin (vehicles/plugins/car.py) is now the
 # canonical source for these three values - derived here, once, at import
@@ -3299,6 +3301,12 @@ def update_npc(
     # brake for it (reproduced: a vehicle rear-ended a parked car right
     # after a turn, having never detected it at all mid-turn).
     avoidance_heading = math.atan2(target.y - vehicle.car.y, target.x - vehicle.car.x)
+    bump_field = getattr(manager, "bump_field", None)
+    if bump_field is not None and vehicle.car.layer == 0 and not getattr(vehicle.car, "map_level", 0):  # NPCs never hop: they take bumps (surface roads only) slowly
+        bump_distance = bump_field.ahead(vehicle.car.x, vehicle.car.y, avoidance_heading, NPC_SPEED_BUMP_LOOKAHEAD_M)
+        if bump_distance is not None:
+            driver.target_speed_mps = min(driver.target_speed_mps, math.sqrt(
+                NPC_SPEED_BUMP_MPS ** 2 + 2.0 * NPC_CORNER_BRAKING_DECEL_MPS2 * max(0.0, bump_distance)))
     pass_offset = _pass_offset_m(driver.current_way, vehicle.width_m)
     passing = driver.passing
     if passing is not None:

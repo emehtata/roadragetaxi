@@ -194,6 +194,13 @@ generated yard destination is not proof of access permission. See § 18's limite
 exception for other parts of the road; it is not blanket permission to leave the
 road or use pedestrian space.
 
+**Game policy (2026-11-25):** an NPC car never hops over a mapped speed bump
+(traffic_calming bump, hump, cushion or table; ground roads on the surface level only); its driver
+slows to 25 km/h over one from 30 m ahead along its steering target, braking at the corner rate (`npc.py`
+`NPC_SPEED_BUMP_MPS`, `NPC_SPEED_BUMP_LOOKAHEAD_M`), the speed the player's
+`check_speed_bump` asks for. Law: §§ 3-5 require speed adapted to the conditions;
+no section is cited for the 25 km/h, and a speed limit stays a maximum.
+
 ## Parking and passenger stops
 
 Law: [§§ 36–41](https://www.finlex.fi/fi/lainsaadanto/2018/729#chp_3__sec_36),

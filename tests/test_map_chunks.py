@@ -354,6 +354,16 @@ def test_garage_crossings_and_bumps_are_not_surface_markings():
     assert [b[:2] for b in chunk["speed_bumps"]] == [[20.0, 0.1]]
 
 
+def test_a_bump_on_a_bridge_is_not_a_surface_bump():
+    """terrain-following-bodies.md: bumps are road shapes of the ground road, so a bridge's is not sent (the car on the
+    road under it must not hop an elevated bump)."""
+    street = SimpleNamespace(points_m=[(0.0, 0.0), (100.0, 0.0)], half_width_m=4.0, highway="residential",
+                             is_drivable=True, layer=0, map_level=None)
+    bump = lambda x, layer: SimpleNamespace(x=x, y=0.1, direction_angle=0.0, width_m=4.0, kind="bump", layer=layer)
+    world = SimpleNamespace(ways=[street], railways=[], waters=[], buildings=[], level_ways=[], speed_bumps=[bump(20.0, 0), bump(60.0, 1)])
+    assert [b[:2] for b in map_chunks.ChunkIndex(world, size=500.0).message("0_0")["speed_bumps"]] == [[20.0, 0.1]]
+
+
 def test_a_river_line_is_a_line_not_a_filled_area():
     """Only closed water areas are filled: Oulujoki's centre line
     (waterway=river, open) sent as an area flooded the city."""

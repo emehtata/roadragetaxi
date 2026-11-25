@@ -1315,3 +1315,15 @@ def test_snapshot_carries_the_pbf_fallback_notice(tmp_path, monkeypatch):
     monkeypatch.setitem(pbf_fallback_notices, "pbf_missing", ("/x/finland-latest.osm.pbf", ""))
     notice = _state(server)["data_source_notice"]
     assert "/x/finland-latest.osm.pbf" in notice and "Overpass" in notice
+
+
+def test_the_tick_hands_the_npc_manager_the_worlds_bumps(tmp_path, monkeypatch):
+    """terrain-following-bodies.md: the seam between simulation.advance_simulation and the NPC drivers' speed-bump cap."""
+    from types import SimpleNamespace
+    from theroadragetrip.vertical import world_bump_field
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    server.world.speed_bumps = [SimpleNamespace(x=server.car.x + 50.0, y=server.car.y, direction_angle=0.0, kind="hump", width_m=6.0)]
+    server.tick(1 / 30)
+    field = server.world.npc_manager.bump_field
+    assert field is world_bump_field(server.world) and field.ahead(server.car.x + 30.0, server.car.y, 0.0, 30.0) is not None
