@@ -69,7 +69,7 @@ func run() -> void:
 	shell._unhandled_input(esc)
 	await create_timer(0.1, true).timeout
 	assert(shell._home_viewer == null and shell._panel.visible and paused)
-	shell._game.sim._buffer = (JSON.stringify({"type": "home_interior", "version": 2,
+	shell._game.sim._buffer = (JSON.stringify({"type": "home_interior", "version": 3,
 		"plan": {"error": "no_home"}}) + "\n").to_utf8_buffer()
 	shell._game.sim._drain_lines()
 	assert(shell._game.sim.home_plan == {"error": "no_home"}, "SimClient decodes the server reply")

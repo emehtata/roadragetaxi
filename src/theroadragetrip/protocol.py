@@ -7,18 +7,18 @@ only touches this module. No pickle, no raw Python objects on the wire.
 
 Message shapes crossing the boundary:
 
-- client -> server: `{"type": "command", "version": 2, "seq": N, "player_id": ..., "command": {...}}`
+- client -> server: `{"type": "command", "version": 3, "seq": N, "player_id": ..., "command": {...}}`
   built by `build_command_message`. `command` mirrors
   `simulation.PlayerCommand`'s fields plus one edge-triggered
   `interact` flag for the discrete "enter/exit vehicle" action.
   `player_id` says whose input it is; there is one player today,
   `LOCAL_PLAYER_ID`, and a command without one means that player.
-- server -> client, once on connect: `{"type": "world", "version": 2, ...}`
+- server -> client, once on connect: `{"type": "world", "version": 3, ...}`
   built by `build_world_message`: the map origin, chunk size and the
   client's `player_id`.
 - server -> client: `{"type": "chunk", ...}` / `{"type": "chunk_unload", ...}`
   (map_chunks.py): the static map around the player, streamed as it moves.
-- server -> client: `{"type": "state", "version": 2, "tick": N, "server_time": s, "state": {...}}`
+- server -> client: `{"type": "state", "version": 3, "tick": N, "server_time": s, "state": {...}}`
   built by `build_state_message` every tick. Dynamic gameplay state, plus the tick's
   semantic `events` (sounds, train arrivals) for the client to present.
   `server_time` is simulation seconds since the server started - the
@@ -47,7 +47,7 @@ from .rail_bookings import PASSENGER_MET, PASSENGER_WAITING
 from .simulation import PlayerCommand
 from .taxi import TaxiPassenger
 
-PROTOCOL_VERSION = 2  # 2: the server fells trees (knocked_trees)
+PROTOCOL_VERSION = 3  # 3: player.air_height and player.land_bump (the server decides the hop); 2: the server fells trees (knocked_trees)
 LOCAL_PLAYER_ID = "local_player"  # the only player until there is multiplayer
 
 
@@ -649,6 +649,8 @@ def build_state_message(
         "player": {
             "x": car.x, "y": car.y, "heading": car.heading, "speed": car.speed,
             "map_level": getattr(car, "map_level", 0),  # 0 surface, < 0 underground (godot-16)
+            "airborne": bool(getattr(car, "airborne", False)),  # off the ground (vertical.py): the server decided, steering is dead
+            "air_height": round(getattr(car, "air_height", 0.0), 3), "land_bump": round(getattr(car, "land_bump", 0.0), 2),  # m above the road, landing jolt 0..1: the client draws these
             "braking": car.braking, "trip_m": car.trip_m, "odometer_m": car.odometer_m,
             "engine_on": car.engine_on, "throttle": round(getattr(car, "throttle", 0.0), 2), "fuel_l": car.fuel_l,
             "fuel_capacity_l": car.fuel_capacity_l,

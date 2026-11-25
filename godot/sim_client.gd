@@ -12,7 +12,7 @@ signal chunk_received(message: Dictionary)
 signal chunk_unloaded(chunk_id: String)
 signal connection_changed(connected: bool)
 
-const PROTOCOL_VERSION := 2
+const PROTOCOL_VERSION := 3  # 3: player.air_height and land_bump; 2: knocked_trees
 
 var host := "127.0.0.1"
 var port := 8765

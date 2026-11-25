@@ -6,6 +6,7 @@ from shapely.affinity import rotate, scale, translate
 from shapely.geometry import LineString, Polygon
 from shapely.ops import unary_union
 
+from theroadragetrip import protocol
 from theroadragetrip.interior import GENERATOR_VERSION, _generate_cached, generate_floor_plan
 
 REFERENCE_L = [(0, 0), (14, 0), (14, 6.5), (5.5, 6.5), (5.5, 13), (0, 13)]
@@ -153,13 +154,13 @@ def test_interior_request_uses_real_server_dispatch(tmp_path, monkeypatch):
     from theroadragetrip import protocol
     server = _build_server(tmp_path, monkeypatch)
     connection = Mock(is_closed=False)
-    connection.try_recv_all.return_value = [{'type': 'command', 'version': 2, 'command': {}, 'home_interior': True}]
+    connection.try_recv_all.return_value = [{'type': 'command', 'version': protocol.PROTOCOL_VERSION, 'command': {}, 'home_interior': True}]
     server._clients.append(connection)
     server._apply_incoming_messages()
     reply = connection.send.call_args.args[0]
-    assert protocol.decode(protocol.encode(reply)) == {'type': 'home_interior', 'version': 2, 'plan': {'error': 'no_home'}}
+    assert protocol.decode(protocol.encode(reply)) == {'type': 'home_interior', 'version': protocol.PROTOCOL_VERSION, 'plan': {'error': 'no_home'}}
     connection.send.reset_mock()
-    connection.try_recv_all.return_value = [{'type': 'command', 'version': 2, 'home_interior': 'true'}]
+    connection.try_recv_all.return_value = [{'type': 'command', 'version': protocol.PROTOCOL_VERSION, 'home_interior': 'true'}]
     server._apply_incoming_messages()
     connection.send.assert_not_called()
 
@@ -182,9 +183,9 @@ def test_home_selection_and_plan_round_trip_over_tcp(tmp_path, monkeypatch):
                                                    bbox=(x - 2, y - 1, x + 2, y + 1), source_building_key=tuple(round(v, 2) for v in building.bbox))]
         server.homes_file = tmp_path / 'home.json'
         server._home, server._home_building_key, server._on_foot = None, None, False
-        connection.send({'type': 'command', 'version': 2, 'command': {'home': True}})
+        connection.send({'type': 'command', 'version': protocol.PROTOCOL_VERSION, 'command': {'home': True}})
         assert _tick_until(server, lambda: server._home is not None)
-        connection.send({'type': 'command', 'version': 2, 'command': {}, 'home_interior': True})
+        connection.send({'type': 'command', 'version': protocol.PROTOCOL_VERSION, 'command': {}, 'home_interior': True})
         replies = []
         def received():
             replies.extend(connection.try_recv_all())

@@ -1317,6 +1317,18 @@ def test_snapshot_carries_the_pbf_fallback_notice(tmp_path, monkeypatch):
     assert "/x/finland-latest.osm.pbf" in notice and "Overpass" in notice
 
 
+def test_player_airborne_flag_in_the_state(tmp_path, monkeypatch):
+    """terrain-following-bodies.md part 3: the server decides the hop and sends it: airborne, air_height and land_bump."""
+    server = _build_server(tmp_path, monkeypatch)
+    from theroadragetrip import protocol
+
+    assert _state(server)["player"]["airborne"] is False and _state(server)["player"]["air_height"] == 0.0
+    server.car.airborne, server.car.air_height, server.car.land_bump = True, 0.0654, 0.3
+    player = _state(server)["player"]
+    assert player["airborne"] is True and player["air_height"] == 0.065 and player["land_bump"] == 0.3
+    assert protocol.PROTOCOL_VERSION == 3  # the player state grew: client and server must agree (godot/sim_client.gd)
+
+
 def test_walking_player_layer_follows_the_deck_under_it(tmp_path, monkeypatch):
     """terrain-following-bodies.md audit: the walker stands on a bridge deck while on it and on the ground off its edge."""
     from theroadragetrip.osm import Way
@@ -1336,6 +1348,38 @@ def test_walking_player_layer_follows_the_deck_under_it(tmp_path, monkeypatch):
     ped.y = 1_000_100.0  # off the deck's edge, no road there
     server.tick(1 / 30)
     assert _state(server)["player_pedestrian"]["layer"] == 0
+
+
+def test_the_server_hops_a_mapped_hump_and_sends_the_hop(tmp_path, monkeypatch):
+    """terrain-following-bodies.md part 3: driving the real tick loop over a mapped hump, the state the client draws starts and
+    ends the hop with the server's: airborne exactly while air_height is up, nothing steers in between."""
+    from types import SimpleNamespace
+    from theroadragetrip.osm import Way
+    from theroadragetrip.physics import SpatialWayGrid
+    from theroadragetrip.simulation import PlayerCommand
+
+    server = _build_server(tmp_path, monkeypatch, ["--npc-vehicle-count", "0", "--pedestrian-count", "0"])
+    road = Way([(1_000_000, 1_000_000), (1_002_000, 1_000_000)], "primary", 7)
+    server.world.ways, server.world.roadworks = [road], []
+    server.world.spatial_grid = SpatialWayGrid(server.world.ways)
+    server.world.speed_bumps = [SimpleNamespace(x=1_000_120.0, y=1_000_000.0, direction_angle=0.0, kind="hump", width_m=6.0)]
+    car = server.car
+    car.x, car.y, car.heading, car.speed, car.layer = 1_000_100.0, 1_000_000.0, 0.0, 14.0, 0
+    car.engine_on = True
+    server._current_way, server._on_foot = road, False
+    seen = []
+    for _ in range(60):
+        started_airborne, heading = car.airborne, car.heading
+        server._latest_command = PlayerCommand(throttle=1, steer_left=1.0 if started_airborne else 0.0, speed_limiter_enabled=False)
+        server.tick(1 / 30)
+        player = _state(server)["player"]
+        seen.append((player["airborne"], player["air_height"], player["land_bump"]))
+        if started_airborne:
+            assert car.heading == heading, "steered in the air"
+    flying = [h for a, h, _ in seen if a]
+    assert flying and max(flying) > 0.02, seen
+    assert all((h > 0.0) == a for a, h, _ in seen if a or h), "air_height and airborne disagree"
+    assert max(j for _, _, j in seen) > 0.0, "no landing jolt sent"
 
 
 def test_the_tick_hands_the_npc_manager_the_worlds_bumps(tmp_path, monkeypatch):

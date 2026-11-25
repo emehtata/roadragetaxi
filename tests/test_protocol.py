@@ -191,6 +191,6 @@ def test_state_has_knocked_trees_near_player():
 
 
 def test_protocol_v1_rejected():
-    assert protocol.PROTOCOL_VERSION == 2
+    assert protocol.PROTOCOL_VERSION == 3
     with pytest.raises(protocol.ProtocolError):
         protocol.decode(protocol.encode({"type": "command", "version": 1}).rstrip(b"\n"))
