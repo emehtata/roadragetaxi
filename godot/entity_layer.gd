@@ -122,8 +122,8 @@ var _vertical := VehicleVertical.new()  # the player's taxi: airborne arc over c
 var _player_speed := 0.0
 var air_height := 0.0  # m the player's taxi is above the road this frame (0 on it)
 var _driven := false  # drawing the player's own taxi (NPC taxis are is_taxi too)
-var _tilts := {}  # vehicle id (or "taxi") -> [pitch, roll] of its 3D car body, eased (Buildings3D.wheel_tilt)
 var deck_height := func(_at: Vector2, _layer: int) -> float: return 0.0  # map_layer.deck_height (main.gd)
+var _tilts := {}  # body id (or "taxi") -> Vector2(pitch, roll) of its 3D body, eased (body_pose)
 var taxi_sign_on := false  # the taxi being drawn is free for a fare (its roof light lit)
 var ploughing := false  # snowing: tractors carry a plough blade and a flashing beacon
 var smoke_enabled := true
@@ -1034,15 +1034,9 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 				var tilt := Vector2.ZERO
 				var height := 0.0
 				if Buildings3D.opaque:  # visual stance from the road under the wheels, eased so it doesn't jitter
-					var id: Variant = "taxi" if is_taxi else vehicle_id
-					if _tilts.size() > 512:  # ponytail: forget all, prune by seen-this-frame if it ever pops visibly
-						_tilts.clear()
-					tilt = _tilts.get(id, Vector2.ZERO)
-					height = float(deck_height.call(c, _layer))
-					if not (_driven and _vertical.airborne):  # in the air keep the last ground tilt
-						tilt = tilt.lerp(Buildings3D.wheel_tilt(c, heading, length, width,
-							func(p: Vector2) -> float: return float(deck_height.call(p, _layer))), 0.25)
-					_tilts[id] = tilt
+					var pose := body_pose(c, heading, length, width, _layer, "taxi" if _driven else vehicle_id, Callable(), _driven and _vertical.airborne)
+					height = pose.x
+					tilt = Vector2(pose.y, pose.z)
 					if _driven:  # the driven vehicle may leave the road over a crest; the arc is cosmetic
 						var ground := height
 						_vertical.track(_layer, c, ground)
@@ -1063,6 +1057,37 @@ func _vehicle_body(c: Vector2, heading: float, length: float, width: float, colo
 			else:
 				_car_body_2d(c, f, r, hl, hw, color, shape, is_taxi, engine_on)
 	_vehicle_lamps(c, f, r, length, width, hl, hw, engine_on, braking, reversing, turn_signal, signal_elapsed)
+
+
+const TILT_EASE_S := 0.058  # the stance eases toward the slope with this time constant (0.25 per frame at 60 Hz)
+const POSE_RANGE_M := 120.0  # farther from the camera than this a body stays level: its wheels are not looked up
+
+
+## A drawn body's (height, pitch, roll) on the ground under it: the surface at its centre, and the stance its four
+## wheel points give (Buildings3D.wheel_tilt), eased over TILT_EASE_S so it doesn't jitter (at once for a body seen first). `ground` (Callable(point) -> height)
+## replaces the deck_height lookup by `layer` (rails, water). `hold`: keep the last stance (the car in the air). Beyond
+## POSE_RANGE_M of the camera: level, and no wheel lookups (4 per body within it, counted as pose_lookups).
+func body_pose(c: Vector2, heading: float, length: float, width: float, layer: int, id: Variant, ground := Callable(), hold := false, delta := 0.0) -> Vector3:
+	var surface := ground if ground.is_valid() else func(p: Vector2) -> float: return float(deck_height.call(p, layer))
+	var counters: Dictionary = preload("res://perf.gd").counters
+	counters["bodies_posed"] = counters.get("bodies_posed", 0) + 1
+	var tilt: Vector2 = _tilts.get(id, Vector2.ZERO)
+	var b3: Node2D = Buildings3D.current
+	if not hold:
+		if id is String and id == "taxi" or b3 == null or c.distance_to(b3.windshield_at if b3.windshield_on else Buildings3D.view_centre) <= POSE_RANGE_M:
+			if _tilts.size() > 512:  # ponytail: forget all, prune by seen-this-frame if it ever pops visibly
+				_tilts.clear()
+			counters["pose_lookups"] = counters.get("pose_lookups", 0) + 4
+			var target := Buildings3D.wheel_tilt(c, heading, length, width, surface)
+			# A body seen for the first time stands at its slope at once (it used to ease up from level); after that the stance
+			# eases with a time constant, so how far a moving car lags its slope does not depend on the frame rate.
+			var dt := delta if delta > 0.0 else get_process_delta_time()
+			tilt = tilt.lerp(target, 1.0 - exp(-(dt if dt > 0.0 else 1.0 / 60.0) / TILT_EASE_S)) if _tilts.has(id) else target
+			_tilts[id] = tilt
+		else:
+			tilt = Vector2.ZERO
+			_tilts.erase(id)
+	return Vector3(float(surface.call(c)), tilt.x, tilt.y)
 
 
 ## Step 6 (--outdoor-3d): the kinds buildings_3d.vehicle builds (cars, vans and taxis: car()).
@@ -1899,6 +1924,9 @@ func _draw() -> void:
 	var b: Dictionary = _frame["b"]
 	var t: float = _frame["t"]
 	var count := 0
+	var counters: Dictionary = preload("res://perf.gd").counters
+	counters["pose_lookups"] = 0  # this frame's body_pose wheel lookups, and the bodies posed
+	counters["bodies_posed"] = 0
 	_lamp_polys.clear()
 	_people_rows.clear()
 	_dog_rows.clear()

@@ -17,6 +17,7 @@ res://tests/camera_modes.gd
 res://tests/walk_camera_keys.gd
 res://tests/vehicle_vertical.gd
 res://tests/speed_bump_surface.gd
+res://tests/body_pose.gd
 res://tests/home_interior.gd
 res://tests/electronic_signs.gd
 res://tests/hud_responsive_layout.gd
