@@ -523,6 +523,22 @@ func light_at(at: Vector2) -> float:
 	return minf(total, 1.5)
 
 
+## At most nine neighbouring 500 m chunks; counts are O(1), no per-light scans.
+func sky_pollution_at(at: Vector2) -> float:
+	var world := Vector2(origin.x+at.x,origin.y-at.y)
+	var cell := Vector2i(floori(world.x/500.0),floori(world.y/500.0))
+	var lamps := 0
+	var buildings := 0
+	for x in range(cell.x-1,cell.x+2):
+		for y in range(cell.y-1,cell.y+2):
+			var chunk = _chunks.get("%d_%d"%[x,y])
+			if chunk==null: continue
+			lamps += maxi(0,chunk.street_lights.size()-chunk._broken.size())
+			buildings += chunk._data.get("buildings",[]).size()
+	var context := clampf(float(lamps)/250.0+float(buildings)/600.0,0,1)
+	return maxf(context,clampf(light_at(at)/1.5,0,1))
+
+
 const FLOODLIGHT_ON_PEOPLE := 3.0  # light_at in a floodlit field: saturates vehicle_light to near white
 
 

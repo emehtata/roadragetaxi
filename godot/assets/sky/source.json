@@ -1,0 +1,44 @@
+{
+  "asset_sha256": {
+    "stars.json": "cbd2a4c1b0cce77070ad2df23a2276e90d17ddc8ef7ec4166b9275a9b1431644",
+    "stars_0.png": "729d8a650ab7b4b4bf27fd7cdbd5dc179afeea993676303d3c2022d5015a87c3",
+    "stars_1.png": "80a30a84b2bf69d8b2508c093d4eaeee08e874ac30d774f8bf854c6e789571de"
+  },
+  "baked_motion_epoch": 2026.0,
+  "catalog": "NASA HEASARC SAO I/131A",
+  "color": "neutral white; photographic and visual magnitudes are not treated as B-V",
+  "dimensions": [
+    4096,
+    2048
+  ],
+  "epoch": "J2000 FK5",
+  "fields": [
+    "SAO integer ID",
+    "RA degrees J2000",
+    "Dec degrees J2000",
+    "visual magnitude",
+    "FK5 dRA seconds of time/year",
+    "FK5 dDec arcsec/year",
+    "spectral type"
+  ],
+  "license": "US-government-public-domain",
+  "photometry": "Mixed historical visual/photovisual estimates, 0.1 magnitude precision; not uniformly Johnson V. Inclusive native visual<=6.0; see docs/star-sky.md.",
+  "projection": "RA increasing in u; declination +90 to -90 in v; seven independent magnitude bands in two RGBA maps, linear uncompressed no mipmaps",
+  "rejected": {
+    "fainter_than_limit": 252382,
+    "invalid_fields": 1470
+  },
+  "rights_evidence": [
+    "https://ntrs.nasa.gov/citations/19660017606",
+    "https://ntrs.nasa.gov/citations/19840015351",
+    "https://data.nasa.gov/dataset/smithsonian-astrophysical-observatory-star-catalog"
+  ],
+  "selected_count": 5092,
+  "source_count": 258944,
+  "source_sha256": "8ad1b253efc0b5386b4e3b8e5150eab4c54b61c090cd3eae6a88eed833702a67",
+  "source_url": "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_sao.tdat.gz",
+  "supported_years": [
+    2020,
+    2040
+  ]
+}

@@ -744,6 +744,11 @@ class SimulationServer:
         by the client, at the city's latitude and longitude."""
         altitude, azimuth = self._sun_position()
         moon_altitude, moon_azimuth, moon_illumination = self._moon_position()
+        from ..calendar import star_sky_state
+        from ..geo import meters_to_latlon
+        observer = self.world.player_pedestrian if self._on_foot else self.car
+        star_lat, star_lon = meters_to_latlon(observer.x, observer.y)
+        stars = star_sky_state(self.calendar.current, star_lat, star_lon) if star_lat is not None and star_lon is not None else {}
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
         from ..holiday_events import holiday_events
@@ -755,6 +760,7 @@ class SimulationServer:
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
                 "moon_illumination": round(moon_illumination, 3),
+                "star_sky": stars,
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
                 "flags": self._flag_state(altitude),

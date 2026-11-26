@@ -2,6 +2,7 @@
   "_doc": "Licensing inventory of everything the Windows release ships (LICENSE_AUDIT.md). tools/check_license_inventory.py fails when a shipped asset file or a bundled Python package has no entry here. Status: verified (rights and obligations established), conditional (distributable once the listed obligations are met), unresolved (rights not established), not_distributable (not distributable as currently packaged). The check never decides legal compatibility.",
   "audited": {"branch": "release/0.18.0alpha", "commit": "fd514d1", "date": "2026-10-17"},
   "assets": [
+    {"name": "SAO catalogue star sky", "paths": ["godot/assets/sky/**"], "purpose": "Real magnitude-six star coordinates and pre-rendered celestial atlas", "shipped": true, "origin": "NASA HEASARC SAO I/131A; exact URL/hash and transformations in godot/assets/sky/source.json", "copyright": "US government work; NASA NTRS catalogue and machine-readable documentation state public use permitted", "licence": "US government public domain (17 USC 105); public-use notice retained", "evidence": "godot/assets/sky/NOTICE.txt; https://ntrs.nasa.gov/citations/19660017606; https://ntrs.nasa.gov/citations/19840015351", "obligations": "retain source/provenance, modifications and displayed fi/en/de credit; no endorsement claimed", "commercial": "yes", "status": "verified", "remediation": ""},
     {
       "name": "Grab3D Urban Street Light, Bollard and Bus Stop Shelter (CC0)",
       "paths": ["godot/assets/props/street_light*", "godot/assets/props/bollard*", "godot/assets/props/bus_stop_shelter*"],

@@ -5,6 +5,7 @@ import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone, tzinfo
 from enum import Enum
+from functools import lru_cache
 from typing import Optional, Tuple
 
 
@@ -163,6 +164,39 @@ def grid_azimuth(true_azimuth_deg: float, latitude: float, longitude: float) -> 
         math.tan(math.radians(longitude - TM35FIN_CENTRAL_MERIDIAN_DEG)) * math.sin(math.radians(latitude))
     ))
     return (true_azimuth_deg - convergence) % 360.0
+
+
+def star_sky_state(moment: datetime, latitude: float, longitude: float) -> dict:
+    """Cached J2000 celestial-to-map basis, at most 10 s/0.0001 deg old."""
+    utc = finnish_utc(moment).replace(tzinfo=timezone.utc)
+    return _star_sky_state(int(utc.timestamp()) // 10 * 10, round(latitude, 4), round(longitude, 4))
+
+
+@lru_cache(maxsize=128)
+def _star_sky_state(timestamp: int, latitude: float, longitude: float) -> dict:
+    utc = datetime.fromtimestamp(timestamp, timezone.utc)
+    jd = timestamp / 86400.0 + 2440587.5
+    t = (jd - 2451545.0) / 36525.0
+    # IAU 1976 precession, J2000 FK5 to date; omitted nutation/aberration <0.02 deg.
+    zeta = math.radians((2306.2181*t + .30188*t*t + .017998*t*t*t) / 3600.0)
+    z = math.radians((2306.2181*t + 1.09468*t*t + .018203*t*t*t) / 3600.0)
+    theta = math.radians((2004.3109*t - .42665*t*t - .041833*t*t*t) / 3600.0)
+    sidereal = math.radians((280.46061837 + 360.98564736629*(jd-2451545.0) + .000387933*t*t - t*t*t/38710000.0 + longitude) % 360.0)
+    lat = math.radians(latitude)
+    convergence = math.radians(-grid_azimuth(0.0, latitude, longitude))
+    columns = []
+    for x, y, north in ((1., 0., 0.), (0., 1., 0.), (0., 0., 1.)):
+        a = math.sin(zeta)*x + math.cos(zeta)*y
+        b = math.cos(theta)*(math.cos(zeta)*x - math.sin(zeta)*y) - math.sin(theta)*north
+        c = math.sin(theta)*(math.cos(zeta)*x - math.sin(zeta)*y) + math.cos(theta)*north
+        px, py = math.cos(z)*b - math.sin(z)*a, math.sin(z)*b + math.cos(z)*a
+        east = -math.sin(sidereal)*px + math.cos(sidereal)*py
+        n = -math.sin(lat)*(math.cos(sidereal)*px + math.sin(sidereal)*py) + math.cos(lat)*c
+        up = math.cos(lat)*(math.cos(sidereal)*px + math.sin(sidereal)*py) + math.sin(lat)*c
+        columns.append([east*math.cos(convergence)-n*math.sin(convergence), up,
+                        -(n*math.cos(convergence)+east*math.sin(convergence))])
+    return {"basis": columns, "utc": utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "observer": [latitude, longitude], "supported": 2020 <= utc.year <= 2040}
 
 
 def solar_altitude_and_events_on(

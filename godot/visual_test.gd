@@ -354,6 +354,8 @@ func _process(delta: float) -> void:
 			test_eye["at"] = MapMath.point(main.entities.origin, eye["at"][0], eye["at"][1])
 			test_eye["ground"] = main.map_layer.deck_height(test_eye["at"], 0)
 		Buildings3D.current.test_eye = test_eye
+		if eye.has("pitch"):
+			Buildings3D.current.eye_pitch = float(eye["pitch"])
 		RenderingServer.viewport_set_measure_render_time(Buildings3D.current._view.get_viewport_rid(), true)
 	main.speed_limiter = scenario.get("speed_limiter", true)  # false: the drive may exceed the street's limit
 	if scenario.get("lane_assist", false) and not _lane_assist_pressed and not main.entities.player_body().is_empty():
@@ -831,12 +833,117 @@ func _forest_target_readiness() -> Array:
 	return missing
 
 
+var _star_last_check_ms := -1000
+var _star_missing: Array = []
+var _star_seen := {}
+var _star_assets_ok := false
+var _star_sampling := false
+var _star_sample_key: Array = []
+
+## Catalogue-direction pixel contrasts in the actual 3D viewport, sampled only before measurement.
+func _star_readiness() -> Array:
+	var request: Dictionary = scenario.get("requires",{}).get("catalog_stars",{})
+	if request.is_empty(): return []
+	var layer=main.map_layer.buildings_3d
+	if layer==null or _elapsed<10.0: return ["waiting for the star sky camera and streamed context"]
+	var key: Array=[layer.star_state,roundi(layer.star_pollution*100),layer._camera.global_transform]
+	if _measuring or (key==_star_sample_key and not _star_seen.is_empty() and _star_missing.is_empty()):
+		_counts["catalog_stars"]=_star_seen
+		return _star_missing
+	if _star_sampling: return ["sampling catalogue star contribution against the same sky with stars disabled"]
+	if Time.get_ticks_msec()-_star_last_check_ms<500: return ["waiting for settled star-sky inputs"]
+	_star_sample_key=key.duplicate(true)
+	_star_sampling=true
+	_sample_star_readiness(request)
+	return ["sampling catalogue star contribution against the same sky with stars disabled"]
+
+
+func _sample_star_readiness(request: Dictionary) -> void:
+	_star_missing=await _measure_star_readiness(request)
+	_star_sampling=false
+
+
+func _measure_star_readiness(request: Dictionary) -> Array:
+	_star_last_check_ms=Time.get_ticks_msec()
+	_star_missing=[]
+	var layer=main.map_layer.buildings_3d
+	if layer==null or layer._camera.environment.background_mode!=Environment.BG_SKY:
+		return ["catalog stars need the actual outdoor sky camera"]
+	var source: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://assets/sky/source.json"))
+	if not _star_assets_ok:
+		for path: String in source.asset_sha256:
+			if FileAccess.get_sha256("res://assets/sky/"+path)!=source.asset_sha256[path]: return ["star catalogue/atlas source hash mismatch"]
+		_star_assets_ok=true
+	var state: Dictionary=main.entities.shown_state().get("calendar",{}).get("star_sky",{})
+	if state.is_empty() or layer.star_state!=state: return ["star basis is not the authoritative observer/date state"]
+	var pollution_range: Array=request.get("pollution",[0.0,1.0])
+	if layer.star_pollution<pollution_range[0] or layer.star_pollution>pollution_range[1]: _star_missing.append("star pollution %.3f outside %s"%[layer.star_pollution,pollution_range])
+	var calendar: Dictionary=main.entities.shown_state().get("calendar",{})
+	if request.get("moonless",false) and float(calendar.get("moon_altitude_deg",90))>0 and float(calendar.get("moon_illumination",1))>.1: _star_missing.append("star rural scenario is not moonless")
+	# A paired render isolates actual star flux from windows, cloud noise and sky gradients.
+	await RenderingServer.frame_post_draw
+	var image: Image=layer._view.get_texture().get_image()
+	var material: ShaderMaterial=layer._camera.environment.sky.sky_material
+	var visibility: float=layer.star_visibility
+	material.set_shader_parameter("star_visibility",0.0)
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var without: Image=layer._view.get_texture().get_image()
+	material.set_shader_parameter("star_visibility",visibility)
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	var camera: Camera3D=layer._camera
+	var basis: Basis=Buildings3D.StarSky.basis(state)
+	var rows: Array=Buildings3D.StarSky.stars().duplicate()
+	rows.sort_custom(func(a,b): return a[3]<b[3])
+	var projected:=[]
+	var visible:=0
+	var faint:=0
+	for row: Array in rows:
+		var direction: Vector3=basis*Buildings3D.StarSky.direction(row)
+		if direction.y<sin(deg_to_rad(15.0)): continue
+		var point:=camera.global_position+direction*1000.0
+		if not camera.is_position_in_frustum(point): continue
+		var pixel:=Vector2i(camera.unproject_position(point))
+		if pixel.x<12 or pixel.y<12 or pixel.x>=image.get_width()-12 or pixel.y>=int(image.get_height()*.70): continue
+		var peak:=0.0
+		for x in range(-2,3):
+			for y in range(-2,3):
+				var c:=image.get_pixel(pixel.x+x,pixel.y+y)
+				var back:=without.get_pixel(pixel.x+x,pixel.y+y)
+				peak=maxf(peak,(c.r+c.g+c.b-back.r-back.g-back.b)/3.0)
+		var contrast:=peak
+		var seen:=contrast>float(request.get("min_contrast",.003))
+		if seen:
+			visible+=1
+			if float(row[3])>=5.0: faint+=1
+		projected.append({"sao":row[0],"magnitude":row[3],"direction":[direction.x,direction.y,direction.z],"pixel":[pixel.x,pixel.y],"contrast":contrast,"visible":seen})
+		if projected.size()>=120: break
+	_star_seen={"source_sha256":source.source_sha256,"selected_count":source.selected_count,"atlas_sha256":source.asset_sha256,"observer":state.get("observer"),"utc":state.get("utc"),"basis":state.get("basis"),"pollution":layer.star_pollution,"limiting_magnitude":layer.star_limit,"night_visibility":layer.star_visibility,"projected":projected,"visible":visible,"faint_visible":faint,"texture_bytes":Buildings3D.StarSky.STARS_0.get_width()*Buildings3D.StarSky.STARS_0.get_height()*8}
+	if projected.size()<int(request["min_projected"]): _star_missing.append("too few known catalogue stars project into the sky camera")
+	if visible<int(request.get("min_visible",0)): _star_missing.append("only %d known catalogue stars show rendered contrast"%visible)
+	if faint<int(request.get("min_faint",0)): _star_missing.append("no magnitude-five/six source star has rendered contrast")
+	if request.get("hidden",false):
+		var shader_hidden: bool=layer.star_visibility==0.0 or float(scenario.cloud)>=.99
+		if not shader_hidden: _star_missing.append("star control does not suppress the actual shader path")
+		if visible>0: _star_missing.append("catalogue stars still contribute visible pixels in hidden control")
+	_counts["catalog_stars"]=_star_seen
+	return _star_missing
+
+
 ## What the scenario needs and the scene does not show yet ([] when ready).
 func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
 	if state.is_empty():
 		return ["no state from the server yet"]
 	var missing := _hud_readiness() if scenario.has("hud_fixture") else []
+	if scenario.has("star_profile") and _elapsed<30.0: missing.append("catalogue sky profile warmup")
+	if scenario.has("star_profile"):
+		if not MapChunkScript.ready_meshes.is_empty(): missing.append("catalogue profile waits for all queued mesh uploads")
+		for chunk in main.map_layer._chunks.values():
+			if chunk._building_task>=0 or chunk._forest_task>=0 or chunk._lamp_task>=0:
+				missing.append("catalogue profile waits for all streamed chunk builds")
+				break
 	if scenario.get("nature_profile",false) and _elapsed<30.0: missing.append("mapped-tree profile warmup")
 	if (scenario.get("id","")=="cozy_vehicles_profile" or scenario.get("street_profile",false)) and _elapsed>=30.0:
 		var expected_forest:=0
@@ -947,6 +1054,7 @@ func check() -> Array:
 		if seen < int(scenario["requires"]["carts_in_view"]):
 			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
 	missing.append_array(_forest_target_readiness())
+	missing.append_array(_star_readiness())
 	var requires: Dictionary = scenario.get("requires", {})
 	if requires.get("rider_parts", false):  # docs/specs/terrain-following-bodies.md part 4: a posed person rides, not two boxes
 		var person: int = Buildings3D.person_arrays(Color.RED, "walk_0", 1.0, "", 0)["verts"].size()

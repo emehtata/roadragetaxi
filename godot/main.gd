@@ -136,6 +136,8 @@ var _bench_hide: PackedStringArray = []
 var _bench_pre_draw := 0  # --bench: when the renderer started this frame (usec)
 var override_altitude := NAN  # --sun-altitude
 var _sky_bodies_key := Transform2D(Vector2.INF, Vector2.INF, Vector2.INF)  # the sky discs' last (sun alt, az, moon alt, az, illumination)
+var _star_pollution := 0.0
+var _star_pollution_at_ms := -1000
 var override_azimuth := NAN  # --sun-azimuth (degrees from grid north), for the shadow checks
 var override_cloud := NAN  # --cloud-cover (0 clear .. 1 overcast)
 var override_night := -1.0  # >= 0: presentation override for the audio test (never sent to Python)
@@ -1036,6 +1038,14 @@ func _present(state: Dictionary) -> void:
 	var sun_azimuth := Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth
 	var moon_azimuth := Daylight.moon_value(state, "moon_azimuth_deg", 180.0)
 	var moon_illumination := Daylight.moon_value(state, "moon_illumination", 0.0)
+	if map_layer.buildings_3d:
+		var now_ms := Time.get_ticks_msec()
+		if now_ms-_star_pollution_at_ms>=500:
+			var at := MapMath.point(entities.origin,player["x"],player["y"])
+			var target: float = map_layer.sky_pollution_at(at)
+			_star_pollution = move_toward(_star_pollution,target,.15)
+			_star_pollution_at_ms = now_ms
+		map_layer.buildings_3d.set_catalog_stars(calendar.get("star_sky",{}),_star_pollution,altitude,moon_altitude,moon_illumination)
 	var sky_key := Transform2D(Vector2(altitude, sun_azimuth), Vector2(moon_altitude, moon_azimuth), Vector2(moon_illumination, 0.0))
 	if sky_key != _sky_bodies_key:  # sun-moon-in-sky: the discs, only when a value changed
 		_sky_bodies_key = sky_key

@@ -390,6 +390,7 @@ static func credits_text(language := "en") -> String:
 		T.text("credits_urban_street", language),
 		T.text("credits_cozy_retro_cars", language),
 		T.text("credits_cozy_nature", language),
+		T.text("credits_star_sky", language),
 		T.text("credits_carousel", language),
 		T.text("credits_swing_ride", language),
 		T.text("credits_ferris_wheel", language),

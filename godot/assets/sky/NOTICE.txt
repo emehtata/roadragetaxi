@@ -1,0 +1,28 @@
+Smithsonian Astrophysical Observatory Star Catalog (SAO Staff, 1966),
+machine-readable revisions by NASA Astronomical Data Center, with J2000
+positions and proper motions supplied by Clayton A. Smith, US Naval Observatory.
+Distributed as the SAO I/131A table by NASA GSFC HEASARC.
+
+NASA NTRS public-use notice for the original catalogue (19660017606) and
+machine-readable documentation (19840015351):
+"Work of the US Gov. Public Use Permitted."
+Distribution Limits: Public.
+
+https://ntrs.nasa.gov/citations/19660017606
+https://ntrs.nasa.gov/citations/19840015351
+https://data.nasa.gov/dataset/smithsonian-astrophysical-observatory-star-catalog
+https://heasarc.gsfc.nasa.gov/W3Browse/star-catalog/sao.html
+
+17 USC 105 (US government works):
+Copyright protection under this title is not available for any work of the
+United States Government, but the United States Government is not precluded
+from receiving and holding copyrights transferred to it by assignment,
+bequest, or otherwise.
+https://uscode.house.gov/view.xhtml?req=granuleid:USC-prelim-title17-section105
+
+Modified for The Road Rage Trip: finite SAO visual-magnitude <=6.0 subset;
+unused columns removed; deterministic ID order; proper motions advanced from
+J2000 to 2026 in the J2000 equatorial frame; seven magnitude bands rasterized
+into two celestial sky textures. These are game assets, not official NASA/SAO
+products. No NASA, Smithsonian or USNO endorsement is implied.
+The HYG/Hipparcos comparison catalogues are not included in these assets.

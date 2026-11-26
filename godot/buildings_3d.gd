@@ -54,6 +54,12 @@ var precip_kind := ""  # main.gd: "" underground, clear or with precipitation of
 var precip_intensity := 0.7
 var _precip: Precipitation3D
 var _sky_offset := Vector2.ZERO
+const StarSky := preload("res://star_sky.gd")
+var star_state := {}
+var star_pollution := 0.0
+var star_limit := 0.0
+var star_visibility := 0.0
+var _star_key: Array = []
 var windshield_on := false
 var route_3d := preload("res://route_3d.gd").new()  # the navigation route in 1/3 (main.gd)
 var chase_on := false  # with windshield_on: the third-person camera (camera_modes.gd) instead of the eye
@@ -401,6 +407,26 @@ func set_sky_bodies(sun_alt: float, sun_az: float, moon_alt: float, moon_az: flo
 		material.set_shader_parameter("moon_illumination", moon_illum)
 		material.set_shader_parameter("sun_visible", 1.0 if sun_alt > -0.833 else 0.0)
 		material.set_shader_parameter("moon_visible", 1.0 if moon_alt > 0.0 else 0.0)
+
+
+func set_catalog_stars(state: Dictionary, pollution: float, sun_alt: float, moon_alt: float, illumination: float) -> void:
+	if not opaque: return
+	var key := [state,pollution,sun_alt,moon_alt,illumination]
+	if key==_star_key: return
+	_star_key = key.duplicate(true)
+	star_state = state
+	star_pollution = pollution
+	star_limit = StarSky.limiting_magnitude(sun_alt,pollution,moon_alt,illumination)
+	star_visibility = StarSky.night_visibility(sun_alt) if state.get("supported",false) else 0.0
+	var material: ShaderMaterial = _camera.environment.sky.sky_material
+	material.set_shader_parameter("star_map_0",StarSky.STARS_0)
+	material.set_shader_parameter("star_map_1",StarSky.STARS_1)
+	material.set_shader_parameter("map_to_stars",StarSky.basis(state).transposed())
+	material.set_shader_parameter("star_visibility",star_visibility)
+	var weights := PackedFloat32Array()
+	for i in 8: weights.append(StarSky.band_weight(i,star_limit) if i<7 else 0.0)
+	material.set_shader_parameter("star_weights_0",Vector4(weights[0],weights[1],weights[2],weights[3]))
+	material.set_shader_parameter("star_weights_1",Vector4(weights[4],weights[5],weights[6],weights[7]))
 
 
 func set_cloud_cover(cover: float) -> void:

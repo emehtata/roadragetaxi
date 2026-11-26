@@ -1,0 +1,93 @@
+{
+  "reference": "ERFA 2.0.1.5 atco13, ICRS source direction with SAO proper motion at date, UTC, DUT1=0, no pressure/refraction, sea level; FK5/ICRS difference below tolerance",
+  "cases": [
+    {
+      "utc": "2026-01-15T00:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 308,
+      "altitude": 60.133926618173355,
+      "azimuth": 358.7542035698879
+    },
+    {
+      "utc": "2026-01-15T00:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 67174,
+      "altitude": 14.27028987016989,
+      "azimuth": 31.08767794702593
+    },
+    {
+      "utc": "2026-09-15T21:00:00Z",
+      "latitude": 65.01,
+      "longitude": 25.47,
+      "sao": 308,
+      "altitude": 65.20089854013744,
+      "azimuth": 1.4206891068247847
+    },
+    {
+      "utc": "2026-09-15T21:00:00Z",
+      "latitude": 65.01,
+      "longitude": 25.47,
+      "sao": 67174,
+      "altitude": 48.84408596674912,
+      "azimuth": 258.45201968945565
+    },
+    {
+      "utc": "2026-06-15T21:00:00Z",
+      "latitude": -33.92,
+      "longitude": 18.42,
+      "sao": 252838,
+      "altitude": 60.77780254685913,
+      "azimuth": 197.11865437791582
+    },
+    {
+      "utc": "2039-09-15T21:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 308,
+      "altitude": 60.29026895401932,
+      "azimuth": 1.1508093669281685
+    },
+    {
+      "utc": "2039-09-15T21:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 67174,
+      "altitude": 49.98443871816392,
+      "azimuth": 263.2799156078634
+    },
+    {
+      "utc": "2020-01-15T00:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 308,
+      "altitude": 60.11315060677288,
+      "azimuth": 358.70322988158796
+    },
+    {
+      "utc": "2020-01-15T00:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 67174,
+      "altitude": 14.141511823030044,
+      "azimuth": 30.716418389504586
+    },
+    {
+      "utc": "2026-01-15T20:00:00Z",
+      "latitude": 60.17,
+      "longitude": 24.94,
+      "sao": 151881,
+      "altitude": 11.16010864434078,
+      "azimuth": 159.17825895784398
+    },
+    {
+      "utc": "2026-01-15T18:00:00Z",
+      "latitude": -33.92,
+      "longitude": 18.42,
+      "sao": 234480,
+      "altitude": 48.57830865795463,
+      "azimuth": 133.3889556597563
+    }
+  ]
+}

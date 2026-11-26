@@ -3,3 +3,4 @@ pytest
 pytest-randomly
 pytest-xdist
 pillow
+numpy  # offline star-atlas builder

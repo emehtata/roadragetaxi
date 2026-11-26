@@ -14,6 +14,12 @@ uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);
 uniform float moon_illumination = 0.0;
 uniform float sun_visible = 0.0;
 uniform float moon_visible = 0.0;
+uniform sampler2D star_map_0 : filter_linear, repeat_enable;
+uniform sampler2D star_map_1 : filter_linear, repeat_enable;
+uniform mat3 map_to_stars = mat3(1.0);
+uniform vec4 star_weights_0 = vec4(0.0);
+uniform vec4 star_weights_1 = vec4(0.0);
+uniform float star_visibility = 0.0;
 
 const float DISC_COS = 0.99985;  // cos(1 deg): the discs' radius
 
@@ -57,6 +63,14 @@ void sky() {
 		float clear = (1.0 - density) * smoothstep(0.125, 0.25, coverage);
 		float s = dot(EYEDIR, sun_dir);
 		sky = sky * energy + vec3(1.0, 0.95, 0.8) * (smoothstep(DISC_COS - 0.00002, DISC_COS, s) * 2.0 + pow(max(s, 0.0), 400.0) * 0.3) * sun_visible * clear;
+		// The catalog is a visual background; it need not rebuild/illuminate the radiance cubemap.
+		if (!AT_CUBEMAP_PASS && star_visibility > 0.0) {
+			vec3 equatorial = normalize(map_to_stars * EYEDIR);
+			vec2 star_uv = vec2(atan(equatorial.y, equatorial.x) / (2.0 * PI), 0.5 - asin(clamp(equatorial.z, -1.0, 1.0)) / PI);
+			float stars = dot(texture(star_map_0, star_uv), star_weights_0) + dot(texture(star_map_1, star_uv), star_weights_1);
+			stars *= 1.0 - moon_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, dot(EYEDIR, moon_dir));
+			sky += vec3(stars * star_visibility * clear * smoothstep(0.0, 0.08, y));
+		}
 		float m = dot(EYEDIR, moon_dir);
 		if (m > DISC_COS - 0.00002 && moon_visible > 0.0) {
 			// lit side towards the sun; the terminator as a straight chord at the lit fraction
