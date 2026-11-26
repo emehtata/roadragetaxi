@@ -44,6 +44,7 @@ var _focusables: Array[Control] = []
 var _back_action := Callable()
 var _logo: TextureRect
 var _start_time := {}  # the gig start (year, month, day, hour, minute): now, each time the picker opens
+var _quit_save_pending := false
 var _pause_status: Label  # the pause menu's line under its title: "Saving…", "Saved"
 const THUMBS := "user://save_thumbs"  # NAME.png: the game as it was when the slot was saved
 const THUMB_SIZE := Vector2i(160, 90)
@@ -1651,21 +1652,62 @@ func _pause_menu() -> void:
 		_button(_t("save_game"), func(): await _save_game(func(ok: bool): _pause_status.text = _t("saved") if ok else _t("save_failed")))
 	_button(_t("settings"), _settings_menu)
 	_button(_t("main_menu"), _stop_game)
-	_button(_t("quit"), func():
-		if _can_save():
-			await _save_game(func(ok: bool):
-				if ok:
-					get_tree().quit()
-				else:
-					_pause_status.text = _t("save_failed")
-					if not _body.has_node("QuitWithoutSaving"):
-						var leave := _button(_t("quit_without_saving"), get_tree().quit)
-						leave.name = "QuitWithoutSaving"
-					_focus_menu())
-		else:
-			get_tree().quit())
+	_button(_t("quit"), _confirm_quit)
 	_back_action = _resume
 	_focus_menu()
+
+
+func _quit_game() -> void:
+	get_tree().quit()
+
+
+func _confirm_quit() -> void:
+	if not _can_save():
+		_quit_game()
+		return
+	_clear()
+	_title(_t("confirm_quit"), _t("save_before_quit"))
+	_pause_status = Label.new()
+	_pause_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_body.add_child(_pause_status)
+	_button(_t("save_and_quit"), _save_and_quit)
+	_button(_t("quit_without_saving"), _discard_quit)
+	var cancel := _button(_t("cancel"), _cancel_quit)
+	_back_action = _cancel_quit
+	_focus_menu()
+	var cancel_id := cancel.get_instance_id()
+	(func():
+		var choice := instance_from_id(cancel_id) as Button
+		if is_instance_valid(choice) and choice.is_inside_tree():
+			choice.grab_focus()).call_deferred()
+
+
+func _cancel_quit() -> void:
+	if not _quit_save_pending:
+		_pause_menu()
+
+
+func _discard_quit() -> void:
+	if not _quit_save_pending:
+		_quit_game()
+
+
+func _save_and_quit() -> void:
+	if _quit_save_pending:
+		return
+	_quit_save_pending = true
+	for choice in _focusables:
+		choice.disabled = true
+	_pause_status.text = _t("saving")
+	await _save_game(func(ok: bool):
+		_quit_save_pending = false
+		if ok:
+			_quit_game()
+		else:
+			_pause_status.text = _t("save_failed")
+			for choice in _focusables:
+				choice.disabled = false
+			_focus_menu())
 
 
 func _close_home_interior() -> void:

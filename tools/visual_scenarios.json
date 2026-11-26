@@ -1,6 +1,14 @@
 {
   "scenarios": [
     {
+      "id": "pause_quit_save_confirmation",
+      "kind": "pause_quit_confirmation",
+      "description": "Finnish pause-menu quit confirmation with save, discard and focused cancel choices",
+      "why": "docs/specs/quit-save-confirmation.md: capture only once the real confirmation and all choices are visible and usable",
+      "language": "fi",
+      "start_time": "2026-11-26T12:00"
+    },
+    {
       "id": "oulu_cabin",
       "description": "A holiday cabin at the public Nallikari camping site from 13 m: plank grain on its walls, house windows",
       "why": "docs/specs/wood-cabins-and-piers.md: category 5 walls (building_snow.gdshader); building=cabin found in the loaded Oulu map.",

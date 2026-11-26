@@ -93,6 +93,8 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
     (out / "scenario.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
     if scenario.get("kind") == "startup_download":
         return _run_startup_download(scenario, out)
+    if scenario.get("kind") == "pause_quit_confirmation":
+        return _run_pause_quit_confirmation(scenario, out)
     x, y, heading = scenario["pose"]
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -145,6 +147,20 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
         except subprocess.TimeoutExpired:
             server.kill()
         log.close()
+    path = out / "result.json"
+    result = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
+        "scenario": scenario["id"], "status": "failed", "errors": ["the client wrote no result (godot.log)"]}
+    return result | {"dir": str(out)}
+
+
+def _run_pause_quit_confirmation(scenario: dict, out: Path) -> dict:
+    """Render the real pause confirmation with a saveable menu fixture."""
+    godot = _godot()
+    engine = [] if godot.suffix == ".exe" else ["--display-driver", "x11", "--rendering-driver", "opengl3"]
+    with tempfile.TemporaryDirectory(prefix="rrt-quit-confirmation-") as data, open(out / "godot.log", "w", encoding="utf-8") as log:
+        subprocess.run([str(godot), "--path", _host_path(REPO / "godot", godot), *engine,
+                        "--script", "res://visual_test_pause_quit.gd", "--", "--startup-scenario", _host_path(out / "scenario.json", godot)],
+                       cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=dict(os.environ, XDG_DATA_HOME=data), timeout=120)
     path = out / "result.json"
     result = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {
         "scenario": scenario["id"], "status": "failed", "errors": ["the client wrote no result (godot.log)"]}
