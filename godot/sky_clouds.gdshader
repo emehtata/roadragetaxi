@@ -14,6 +14,7 @@ uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);
 uniform float moon_illumination = 0.0;
 uniform float sun_visible = 0.0;
 uniform float moon_visible = 0.0;
+uniform sampler2D moon_texture : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D star_map_0 : filter_linear, repeat_enable;
 uniform sampler2D star_map_1 : filter_linear, repeat_enable;
 uniform mat3 map_to_stars = mat3(1.0);
@@ -83,7 +84,16 @@ void sky() {
 			float phase_cos = 2.0 * clamp(moon_illumination, 0.0, 1.0) - 1.0;
 			float incidence = p.x * sqrt(max(0.0, 1.0 - phase_cos * phase_cos)) + z * phase_cos;
 			float lit = smoothstep(-0.005, 0.005, incidence);
-			vec3 moon = mix(sky + vec3(0.03), vec3(1.6, 1.58, 1.5), lit);
+			vec3 map_reference_up = abs(moon_dir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+			vec3 map_up = normalize(map_reference_up - moon_dir * dot(map_reference_up, moon_dir));
+			vec3 map_right = normalize(cross(map_up, moon_dir));
+			vec3 surface_normal = normalize(moon_dir * z + side * p.x + up * p.y);
+			float longitude = atan(dot(surface_normal, map_right), dot(surface_normal, moon_dir));
+			float latitude = asin(clamp(dot(surface_normal, map_up), -1.0, 1.0));
+			vec2 moon_uv = vec2(longitude / (2.0 * PI) + 0.5, 0.5 - latitude / PI);
+			float albedo = texture(moon_texture, moon_uv).r;
+			// Keep the lit albedo below display clipping so maria survive Forward+ tonemapping.
+			vec3 moon = mix(sky + vec3(0.03), vec3(0.95, 0.94, 0.9) * clamp(0.25 + 1.1 * albedo, 0.25, 0.85), lit);
 			sky = mix(sky, moon, smoothstep(DISC_COS - 0.00002, DISC_COS, m) * clear);
 		}
 		COLOR = mix(sky, cloud * energy, density);

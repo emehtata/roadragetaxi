@@ -1,0 +1,4 @@
+Moon surface texture: “2k_moon.jpg” by Solar System Scope, https://www.solarsystemscope.com/textures/.
+Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0): https://creativecommons.org/licenses/by/4.0/.
+Texture is used as the Moon's surface albedo; image bytes are unchanged. Full license text is in CC-BY-4.0.txt.
+Solar System Scope describes these maps as based on NASA imagery, with slightly saturated colors and unmapped areas filled with fictional terrain. No NASA endorsement is implied.

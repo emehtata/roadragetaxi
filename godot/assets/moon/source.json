@@ -1,0 +1,14 @@
+{
+  "name": "Solar System Scope 2k Moon texture",
+  "source_url": "https://spaceengine.solarsystemscope.com/textures/download/2k_moon.jpg",
+  "source_page": "https://www.solarsystemscope.com/textures/",
+  "license": "Creative Commons Attribution 4.0 International (CC BY 4.0)",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "attribution": "Solar System Scope",
+  "filename": "2k_moon.jpg",
+  "sha256": "2764ba6535ea0481a062846ee033cc7a909dae05b31a8fd13f3e98f3a7fd92bd",
+  "dimensions": [2048, 1024],
+  "projection": "equirectangular",
+  "transformations": "None; original JPEG is sampled as the lunar albedo map.",
+  "source_notes": "Based on NASA imagery. Solar System Scope notes that colors are slightly saturated and unmapped areas are filled with fictional terrain. No NASA endorsement is implied."
+}

@@ -32,6 +32,7 @@ func run() -> void:
 	material.set_shader_parameter("energy", 0.0)
 	material.set_shader_parameter("coverage", 1.2)
 	material.set_shader_parameter("moon_visible", 1.0)
+	material.set_shader_parameter("moon_texture", load("res://assets/moon/2k_moon.jpg"))
 	var moon := Vector3(0, 1, -1).normalized()
 	material.set_shader_parameter("moon_dir", moon)
 	var environment := Environment.new()
@@ -81,6 +82,26 @@ func run() -> void:
 			await RenderingServer.frame_post_draw
 			var color := view.get_texture().get_image().get_pixel(192,192)
 			check(is_finite(color.r) and (color.r > .5) == (phase == 1.0), "aligned full/new Moon remains stable")
+	material.set_shader_parameter("sun_dir", moon)
+	material.set_shader_parameter("moon_illumination", 1.0)
+	for i in 3: await process_frame
+	await RenderingServer.frame_post_draw
+	var full_moon := view.get_texture().get_image()
+	var texture_min := 1.0
+	var texture_max := 0.0
+	var radius := 384.0 * tan(acos(0.99985)) / (2.0 * tan(deg_to_rad(1.5)))
+	var clipped := 0
+	var interior := 0
+	for y in 384:
+		for x in 384:
+			if Vector2(x + 0.5 - 192, y + 0.5 - 192).length() > radius * 0.6: continue
+			var value := full_moon.get_pixel(x, y).r
+			interior += 1
+			clipped += int(value > 0.98)
+			texture_min = minf(texture_min, value)
+			texture_max = maxf(texture_max, value)
+	check(texture_max - texture_min > 0.1, "the full Moon shows interior surface detail from its texture")
+	check(float(clipped) / interior < 0.05, "the full Moon interior does not clip to white")
 	material.set_shader_parameter("coverage", .125)
 	for i in 3: await process_frame
 	await RenderingServer.frame_post_draw

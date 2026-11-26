@@ -25,13 +25,23 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	var wrong := 0
 	var diagnostic := 0
 	var phase_cos := 2.0 * phase - 1.0
+	var surface_samples := 0
+	var surface_min := 1.0
+	var surface_max := 0.0
+	var clipped := 0
 	for y in range(maxi(0, int(center.y)-60), mini(image.get_height(), int(center.y)+61)):
 		for x in range(maxi(0, int(center.x)-60), mini(image.get_width(), int(center.x)+61)):
 			var ray := camera.project_ray_normal(Vector2(x+.5,y+.5))
 			var p := Vector2(ray.dot(side),ray.dot(up))/radius
 			if p.length_squared() > .92: continue
 			var incidence := p.x * sqrt(1.0-phase_cos*phase_cos)+sqrt(1.0-p.length_squared())*phase_cos
-			var lit := image.get_pixel(x,y).r > .7
+			var value := image.get_pixel(x,y).r
+			var lit := value > .45
+			if p.length_squared() < .36 and incidence > .25:
+				surface_samples += 1
+				surface_min = minf(surface_min, value)
+				surface_max = maxf(surface_max, value)
+				clipped += int(value > .98)
 			count += 1
 			bright += int(lit)
 			if absf(incidence) > .05: wrong += int(lit != (incidence > 0))
@@ -42,7 +52,12 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	if absf(fraction-phase) > float(request.get("max_area_error",.08)) or float(wrong)/maxi(count,1) > .08:
 		missing.append("rendered Moon does not follow spherical phase mask")
 	if diagnostic < 2: missing.append("curved gibbous terminator lacks dark pixels inside a straight chord")
-	return {"missing":missing,"illumination":phase,"lit_fraction":fraction,"samples":count,"mask_mismatches":wrong,"curved_limb_samples":diagnostic}
+	var contrast := surface_max - surface_min if surface_samples > 0 else 0.0
+	var clipped_fraction := float(clipped) / maxi(surface_samples,1)
+	if request.get("surface_texture", false):
+		if surface_samples < 100 or contrast < .1: missing.append("Moon lit interior lacks surface texture contrast")
+		if clipped_fraction > .05: missing.append("Moon lit interior clips to white")
+	return {"missing":missing,"illumination":phase,"lit_fraction":fraction,"samples":count,"mask_mismatches":wrong,"curved_limb_samples":diagnostic,"surface_samples":surface_samples,"surface_contrast":contrast,"surface_clipped_fraction":clipped_fraction}
 
 static func roofs(main: Node, targets: Array) -> Dictionary:
 	var missing := []

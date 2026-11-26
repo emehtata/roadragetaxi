@@ -17,6 +17,7 @@ extends Node2D
 const B25 := preload("res://buildings_25d.gd")  # colours, window rules, unit()
 const CameraModes := preload("res://camera_modes.gd")
 const RS := preload("res://render_style.gd")  # the puddles' colour
+const MOON_TEXTURE := preload("res://assets/moon/2k_moon.jpg")
 static var FOV := 30.0  # degrees, vertical; higher = deeper facades. godot-22: 40 let tall buildings swallow streets, 25 flattens low ones
 const LIGHT := Vector2(-0.6, -0.8)  # walls facing up-left are lit (2D screen direction)
 const WINDOW_OUT := 0.05  # metres in front of the wall, so depth testing keeps windows on top
@@ -405,6 +406,7 @@ func set_sky_bodies(sun_alt: float, sun_az: float, moon_alt: float, moon_az: flo
 		material.set_shader_parameter("sun_dir", Daylight.sun_direction(sun_alt, sun_az, -90.0))
 		material.set_shader_parameter("moon_dir", Daylight.sun_direction(moon_alt, moon_az, -90.0))
 		material.set_shader_parameter("moon_illumination", moon_illum)
+		material.set_shader_parameter("moon_texture", MOON_TEXTURE)
 		material.set_shader_parameter("sun_visible", 1.0 if sun_alt > -0.833 else 0.0)
 		material.set_shader_parameter("moon_visible", 1.0 if moon_alt > 0.0 else 0.0)
 
