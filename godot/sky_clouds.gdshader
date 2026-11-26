@@ -73,10 +73,16 @@ void sky() {
 		}
 		float m = dot(EYEDIR, moon_dir);
 		if (m > DISC_COS - 0.00002 && moon_visible > 0.0) {
-			// lit side towards the sun; the terminator as a straight chord at the lit fraction
-			vec3 side = normalize(sun_dir - moon_dir * dot(sun_dir, moon_dir) + vec3(1e-4, 0.0, 0.0));
-			float u = dot(EYEDIR - moon_dir, side) / sqrt(1.0 - DISC_COS * DISC_COS);
-			float lit = smoothstep(1.0 - 2.0 * moon_illumination - 0.05, 1.0 - 2.0 * moon_illumination + 0.05, u);
+			// A visible hemisphere lit from the projected Sun: only quarter phases have a straight terminator.
+			vec3 projected_sun = sun_dir - moon_dir * dot(sun_dir, moon_dir);
+			vec3 fallback = abs(moon_dir.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+			vec3 side = length(projected_sun) > 0.00001 ? normalize(projected_sun) : normalize(cross(moon_dir, fallback));
+			vec3 up = cross(moon_dir, side);
+			vec2 p = vec2(dot(EYEDIR, side), dot(EYEDIR, up)) / sqrt(1.0 - DISC_COS * DISC_COS);
+			float z = sqrt(max(0.0, 1.0 - dot(p, p)));
+			float phase_cos = 2.0 * clamp(moon_illumination, 0.0, 1.0) - 1.0;
+			float incidence = p.x * sqrt(max(0.0, 1.0 - phase_cos * phase_cos)) + z * phase_cos;
+			float lit = smoothstep(-0.005, 0.005, incidence);
 			vec3 moon = mix(sky + vec3(0.03), vec3(1.6, 1.58, 1.5), lit);
 			sky = mix(sky, moon, smoothstep(DISC_COS - 0.00002, DISC_COS, m) * clear);
 		}

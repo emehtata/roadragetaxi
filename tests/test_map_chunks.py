@@ -779,3 +779,19 @@ def test_cabin_explicit_height_wins():
     square = [(0.0, 0.0), (8.0, 0.0), (8.0, 6.0), (0.0, 6.0)]
     assert [static_world.building_style(Building(square, building_type="cabin", height_m=6.0, height_is_explicit=e))[2]
             for e in (True, False)] == [6.0, 3.0]  # tagged: its height; untagged: one storey
+
+
+def test_open_roof_chunk_height_and_footprint():
+    from theroadragetrip.osm import Building
+
+    polygons = [
+        [(425241.7, 7216600.9), (425234.0, 7216597.7), (425226.1, 7216617.2), (425233.8, 7216620.3), (425241.7, 7216600.9)],
+        [(425241.3, 7216629.4), (425238.4, 7216637.0), (425220.9, 7216630.4), (425223.8, 7216622.8), (425241.3, 7216629.4)],
+    ]
+    world = SimpleNamespace(ways=[], railways=[], waters=[], buildings=[Building(p, building_type='roof', height_m=8) for p in polygons])
+    index = map_chunks.ChunkIndex(world)
+    owners = [c for c in index._chunks.values() if c['canopies']]
+    assert len(owners) == 1
+    assert owners[0]['canopy_heights'] == [2.5, 2.5]
+    assert owners[0]['canopies'] == [[list(p) for p in polygon] for polygon in polygons]
+    assert not owners[0]['buildings']

@@ -57,6 +57,8 @@ var _coaster_mesh_vertices := {}  # audit-only actual mapped path matching
 var _camp_pair_mesh_vertices := {}  # audit-only actual mapped camping combination match
 var _crossbuck_mesh_vertices := {}  # audit-only matching of the mapped crossing mesh
 var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
+var _roof_shelter_evidence := {}
+var _moon_phase_evidence := {}
 var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
 
 
@@ -1055,6 +1057,15 @@ func check() -> Array:
 			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
 	missing.append_array(_forest_target_readiness())
 	missing.append_array(_star_readiness())
+	if scenario.get("requires",{}).has("moon_phase"):
+		_moon_phase_evidence = preload("res://visual_test_moon_roofs.gd").moon(main,scenario.requires.moon_phase)
+		_counts["moon_phase"] = _moon_phase_evidence
+		missing.append_array(_moon_phase_evidence.missing)
+	if scenario.get("requires",{}).has("roof_shelters"):
+		if _roof_shelter_evidence.is_empty() or not _roof_shelter_evidence.missing.is_empty():
+			_roof_shelter_evidence = preload("res://visual_test_moon_roofs.gd").roofs(main,scenario.requires.roof_shelters)
+		_counts["roof_shelters"] = _roof_shelter_evidence
+		missing.append_array(_roof_shelter_evidence.missing)
 	var requires: Dictionary = scenario.get("requires", {})
 	if requires.get("rider_parts", false):  # docs/specs/terrain-following-bodies.md part 4: a posed person rides, not two boxes
 		var person: int = Buildings3D.person_arrays(Color.RED, "walk_0", 1.0, "", 0)["verts"].size()

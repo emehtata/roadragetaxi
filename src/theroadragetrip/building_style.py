@@ -121,7 +121,7 @@ HALL_TYPES = {"industrial", "warehouse"}  # one storey, one window row
 CHURCH_TYPES = {"church", "chapel", "cathedral"}  # a steep pitched roof (gabled flag 2)
 TANK_TYPES = {"storage_tank", "tank", "silo"}  # round metal, as tall as 0.8 x its width, no windows
 TANK_COLOR = (196, 199, 197)
-TYPE_HEIGHT_M = {**{t: 3.0 for t in OUTBUILDING_TYPES}, **{t: 8.0 for t in HALL_TYPES}, "carport": 2.5,
+TYPE_HEIGHT_M = {**{t: 3.0 for t in OUTBUILDING_TYPES}, **{t: 8.0 for t in HALL_TYPES}, **{t: 2.5 for t in OPEN_ROOF_BUILDING_TYPES},
                  "kindergarten": 4.0, "school": 7.0, **{t: 8.0 for t in CHURCH_TYPES}}
 
 

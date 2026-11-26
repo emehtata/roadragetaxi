@@ -130,3 +130,15 @@ def test_retail_halls_do_not_invent_apartment_floors():
     untyped = Building(apartments.points_m, building_type="yes", height_m=13.2,
                        associated_places=[Place(10, 10, "Supermarket", "supermarket")])
     assert building_style(untyped)[2] == 6.0 and building_style(untyped)[5:7] == [1, 4]
+
+
+def test_open_roof_defaults_do_not_scale_with_footprint():
+    from theroadragetrip.osm import Building
+    from theroadragetrip.static_world import building_style
+
+    for kind in ('roof', 'canopy', 'carport'):
+        for width, depth in ((3, 4), (60, 40)):
+            points = [(0, 0), (width, 0), (width, depth), (0, depth)]
+            assert building_style(Building(points, building_type=kind, height_m=20))[2] == 2.5
+            assert building_style(Building(points, building_type=kind, height_m=12, height_is_explicit=True))[2] == 12
+            assert building_style(Building(points, building_type=kind, height_m=6, levels=2))[2] == 6
