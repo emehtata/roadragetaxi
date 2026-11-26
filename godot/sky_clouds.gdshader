@@ -11,6 +11,7 @@ uniform float energy = 1.0;
 // sun-moon-in-sky: Buildings3D.set_sky_bodies; discs 2 deg wide (0.53 enlarged for readability)
 uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
 uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);
+uniform vec3 moon_north = vec3(0.0, 0.0, 1.0);
 uniform float moon_illumination = 0.0;
 uniform float sun_visible = 0.0;
 uniform float moon_visible = 0.0;
@@ -84,9 +85,14 @@ void sky() {
 			float phase_cos = 2.0 * clamp(moon_illumination, 0.0, 1.0) - 1.0;
 			float incidence = p.x * sqrt(max(0.0, 1.0 - phase_cos * phase_cos)) + z * phase_cos;
 			float lit = smoothstep(-0.005, 0.005, incidence);
-			vec3 map_reference_up = abs(moon_dir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
-			vec3 map_up = normalize(map_reference_up - moon_dir * dot(map_reference_up, moon_dir));
-			vec3 map_right = normalize(cross(map_up, moon_dir));
+			vec3 map_up = moon_north - moon_dir * dot(moon_north, moon_dir);
+			if (length(map_up) < 0.00001) {
+				vec3 fallback_up = abs(moon_dir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
+				map_up = fallback_up - moon_dir * dot(fallback_up, moon_dir);
+			}
+			map_up = normalize(map_up);
+			// Equirectangular positive-east longitude appears to the observer's right.
+			vec3 map_right = normalize(cross(moon_dir, map_up));
 			vec3 surface_normal = normalize(moon_dir * z + side * p.x + up * p.y);
 			float longitude = atan(dot(surface_normal, map_right), dot(surface_normal, moon_dir));
 			float latitude = asin(clamp(dot(surface_normal, map_up), -1.0, 1.0));

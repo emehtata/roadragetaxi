@@ -18,6 +18,8 @@ const B25 := preload("res://buildings_25d.gd")  # colours, window rules, unit()
 const CameraModes := preload("res://camera_modes.gd")
 const RS := preload("res://render_style.gd")  # the puddles' colour
 const MOON_TEXTURE := preload("res://assets/moon/2k_moon.jpg")
+# IAU lunar north-pole direction in the J2000 equatorial frame (JPL D-32296).
+const MOON_NORTH_J2000 := Vector3(-0.0000354375, -0.39812155, 0.91733267)
 static var FOV := 30.0  # degrees, vertical; higher = deeper facades. godot-22: 40 let tall buildings swallow streets, 25 flattens low ones
 const LIGHT := Vector2(-0.6, -0.8)  # walls facing up-left are lit (2D screen direction)
 const WINDOW_OUT := 0.05  # metres in front of the wall, so depth testing keeps windows on top
@@ -423,7 +425,9 @@ func set_catalog_stars(state: Dictionary, pollution: float, sun_alt: float, moon
 	var material: ShaderMaterial = _camera.environment.sky.sky_material
 	material.set_shader_parameter("star_map_0",StarSky.STARS_0)
 	material.set_shader_parameter("star_map_1",StarSky.STARS_1)
-	material.set_shader_parameter("map_to_stars",StarSky.basis(state).transposed())
+	var celestial_basis := StarSky.basis(state)
+	material.set_shader_parameter("map_to_stars",celestial_basis.transposed())
+	material.set_shader_parameter("moon_north",celestial_basis * MOON_NORTH_J2000)
 	material.set_shader_parameter("star_visibility",star_visibility)
 	var weights := PackedFloat32Array()
 	for i in 8: weights.append(StarSky.band_weight(i,star_limit) if i<7 else 0.0)

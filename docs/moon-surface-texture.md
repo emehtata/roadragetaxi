@@ -1,9 +1,9 @@
 # Moon surface texture
 
 The sky's Moon disc samples `godot/assets/moon/2k_moon.jpg` as an
-equirectangular albedo map. The existing shader still controls the apparent
-disc, lunar phase, cloud occlusion and stars; the texture only supplies the
-surface's visible maria and crater detail.
+equirectangular albedo map. East-west is oriented as seen from Earth, and the
+lunar north pole is projected into the observer's sky using the J2000 celestial
+basis. The pole uses the IAU mean direction from [JPL D-32296](https://ssd.jpl.nasa.gov/doc/lunar_cmd_2005_jpl_d32296.pdf); periodic pole terms and optical libration are not modelled. The existing shader still controls the apparent disc, lunar phase, cloud occlusion and stars; the texture only supplies the surface's visible maria and crater detail.
 
 The lit albedo stays below display clipping in Forward+; the earlier HDR
 brightness washed the map out to white. The native `moon_phase.gd` render check

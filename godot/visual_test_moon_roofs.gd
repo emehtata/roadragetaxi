@@ -12,6 +12,15 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	if phase < range_[0] or phase > range_[1]: return {"missing": ["wrong lunar phase %.3f" % phase]}
 	var camera: Camera3D = layer._camera
 	var direction: Vector3 = material.get_shader_parameter("moon_dir")
+	var actual_north: Vector3 = material.get_shader_parameter("moon_north").normalized()
+	var expected_north: Vector3 = (Buildings3D.StarSky.basis(layer.star_state) * Buildings3D.MOON_NORTH_J2000).normalized()
+	var pole_alignment := actual_north.dot(expected_north)
+	var projected_north := (actual_north - direction * actual_north.dot(direction)).normalized()
+	var lunar_east := direction.cross(projected_north).normalized()
+	var view_right := camera.global_basis.x - direction * camera.global_basis.x.dot(direction)
+	var east_right_alignment := lunar_east.dot(view_right.normalized())
+	if pole_alignment < .9999: return {"missing":["Moon map north does not use the observer's celestial pole basis"],"pole_alignment":pole_alignment}
+	if east_right_alignment <= 0.0: return {"missing":["positive lunar east is mirrored in the observer's view"],"pole_alignment":pole_alignment,"east_right_alignment":east_right_alignment}
 	var at := camera.global_position + direction * camera.far * 0.5
 	if not camera.is_position_in_frustum(at): return {"missing": ["Moon outside camera view"]}
 	var center := camera.unproject_position(at)
@@ -57,7 +66,7 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	if request.get("surface_texture", false):
 		if surface_samples < 100 or contrast < .1: missing.append("Moon lit interior lacks surface texture contrast")
 		if clipped_fraction > .05: missing.append("Moon lit interior clips to white")
-	return {"missing":missing,"illumination":phase,"lit_fraction":fraction,"samples":count,"mask_mismatches":wrong,"curved_limb_samples":diagnostic,"surface_samples":surface_samples,"surface_contrast":contrast,"surface_clipped_fraction":clipped_fraction}
+	return {"missing":missing,"illumination":phase,"lit_fraction":fraction,"samples":count,"mask_mismatches":wrong,"curved_limb_samples":diagnostic,"surface_samples":surface_samples,"surface_contrast":contrast,"surface_clipped_fraction":clipped_fraction,"pole_alignment":pole_alignment,"east_right_alignment":east_right_alignment}
 
 static func roofs(main: Node, targets: Array) -> Dictionary:
 	var missing := []
