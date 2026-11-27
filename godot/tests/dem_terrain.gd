@@ -30,6 +30,9 @@ func _initialize() -> void:
 	check(B3.top_camera_position(Vector2(15, -5), 300.0, B3.ground_height({}, taxi)) == Vector3(15, 300.0, -5), "switch off: camera unchanged")
 	test_eye_follows_ground()
 	test_lamp_stands_on_ground()
+	test_railing_stands_on_ground()
+	test_long_railing_follows_hill()
+	test_broken_fence_stands_on_ground()
 	test_car_base_on_road_slope()
 	test_car_base_on_bridge_deck()
 	test_car_tilt_follows_road()
@@ -59,6 +62,70 @@ func test_lamp_stands_on_ground() -> void:
 	var base:=transform*B3.STREET_LIGHT_BASE
 	var pole:=Vector2(base.x,base.z)
 	check(absf(base.y-B3.ground_height(ground,pole))<.01,"authored lamp base on DEM")
+
+## Hedges, walls, fences and boards follow the DEM ground along each segment; with no grid they stand at 0.
+func test_railing_stands_on_ground() -> void:
+	var grid := {"ground_heights": {"origin": [0, 0], "step": 100.0, "cols": 2, "heights": [6.0, 12.0, 6.0, 12.0]}}
+	MapChunk.prepare(grid, Vector2.ZERO)
+	var ground: Dictionary = grid["prepared"]["ground_heights"]
+	var line := PackedVector2Array([Vector2(10, -10), Vector2(60, -10), Vector2(60, -50)])
+	for kind in ["fence", "wall", "hedge", "boards"]:
+		var rows := [[kind, line]]
+		var tall: float = B3.RAILINGS[kind][1]
+		var flat: PackedVector3Array = B3.railings_node(rows).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		check(is_zero_approx(_extent(flat, 0)) and is_equal_approx(_extent(flat, 1), tall), "%s: no grid, base 0, top %.1f" % [kind, tall])
+		var verts: PackedVector3Array = B3.railings_node(rows, ground).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+		var below := 0.0
+		var off := 0.0  # a vertex is at the ground (base) or ground + tall (top): no step on the slope
+		for v in verts:
+			var g := B3.ground_height(ground, Vector2(v.x, v.z))
+			below = maxf(below, g - v.y)
+			off = maxf(off, minf(absf(v.y - g), absf(v.y - g - tall)))
+		check(below < 0.05, "%s: nowhere below the DEM ground (%.3f)" % [kind, below])
+		check(off < 0.05, "%s: base and top follow the slope (%.3f)" % [kind, off])
+		check(_extent(verts, 0) > 6.0, "%s: lifted by the ground height" % kind)
+
+## A 100 m fence whose ends are at 0 m over a 20 m hill between them rises over it instead of cutting through.
+func test_long_railing_follows_hill() -> void:
+	var grid := {"ground_heights": {"origin": [0, 0], "step": 50.0, "cols": 3, "heights": [0.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 0.0]}}
+	MapChunk.prepare(grid, Vector2.ZERO)
+	var ground: Dictionary = grid["prepared"]["ground_heights"]
+	var verts: PackedVector3Array = B3.railings_node([["fence", PackedVector2Array([Vector2(0, -50), Vector2(100, -50)])]], ground).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	check(_extent(verts, 1) > 20.0, "long fence: rises over the hill (%.1f)" % _extent(verts, 1))
+	var worst := 0.0
+	for v in verts:
+		worst = maxf(worst, B3.ground_height(ground, Vector2(v.x, v.z)) - v.y)
+	check(worst < 0.05, "long fence: nowhere below the ground (%.3f)" % worst)
+	print("long fence: top ", _extent(verts, 1), " below ", worst, " verts ", verts.size())
+
+## A wooden fence broken in the middle draws only its two leftover pieces, both on the ground.
+func test_broken_fence_stands_on_ground() -> void:
+	var grid := {"ground_heights": {"origin": [0, 0], "step": 100.0, "cols": 2, "heights": [6.0, 12.0, 6.0, 12.0]}}
+	MapChunk.prepare(grid, Vector2.ZERO)
+	var ground: Dictionary = grid["prepared"]["ground_heights"]
+	var chunk := MapChunk.new()
+	chunk._data = {"railings": [["wood_fence", [[10.0, -10.0], [60.0, -10.0]]]]}
+	var whole: Array = chunk.railing_rows()
+	check(whole.size() == 1, "whole fence: one row")
+	chunk._hedge_damage = {MapChunk.hedge_key(chunk._data["railings"][0]): [[[10.0, -10.0], [25.0, -10.0]], [[45.0, -10.0], [60.0, -10.0]]]}
+	var rows: Array = chunk.railing_rows()
+	check(rows.size() == 2, "broken fence: its two leftover pieces")
+	var verts: PackedVector3Array = B3.railings_node(rows, ground).mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var below := 0.0
+	var in_gap := 0
+	for v in verts:
+		below = maxf(below, B3.ground_height(ground, Vector2(v.x, v.z)) - v.y)
+		in_gap += 1 if v.x > 25.1 and v.x < 44.9 else 0
+	check(below < 0.05 and _extent(verts, 0) > 6.0, "broken fence pieces stand on the ground (%.3f)" % below)
+	check(in_gap == 0, "broken fence: the gap stays open")
+	chunk.free()
+
+## The lowest (0) or highest (1) y of `verts`.
+func _extent(verts: PackedVector3Array, high: int) -> float:
+	var y := INF if high == 0 else -INF
+	for v in verts:
+		y = minf(y, v.y) if high == 0 else maxf(y, v.y)
+	return y
 
 ## The highest triangle of `verts` over `at`, interpolated (the drawn top there); -INF if none.
 func _top_under(verts: PackedVector3Array, at: Vector2) -> float:

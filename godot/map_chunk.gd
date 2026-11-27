@@ -2170,15 +2170,20 @@ func _set_dynamic_3d(name: String, node: Node3D) -> void:
 		node.free()
 
 
+## The 3D rows [kind, points]: what is left of broken hedges and wooden fences, whole ones otherwise.
+func railing_rows() -> Array:
+	var rows: Array = []
+	for railing in _data["railings"]:
+		var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
+		var parts: Array = _hedge_damage.get(hedge_key(railing), [railing[1]]) if railing[0] in ["hedge", "wood_fence"] else [railing[1]]
+		for part in parts:
+			rows.append([kind, _points(part)])
+	return rows
+
+
 func _draw_railings(node: Node2D) -> void:
-	if outdoor_3d and buildings_3d:  # step 5: standing in the 3D view (what is left of broken hedges and wooden fences)
-		var rows: Array = []
-		for railing in _data["railings"]:
-			var kind := str(railing[0]) if railing[0] in ["hedge", "wall", "boards"] else "fence"
-			var parts: Array = _hedge_damage.get(hedge_key(railing), [railing[1]]) if railing[0] in ["hedge", "wood_fence"] else [railing[1]]
-			for part in parts:
-				rows.append([kind, _points(part)])
-		_set_dynamic_3d("railings", B3.railings_node(rows))
+	if outdoor_3d and buildings_3d:  # step 5: standing in the 3D view
+		_set_dynamic_3d("railings", B3.railings_node(railing_rows(), ground_heights))
 		return
 	var lines := {"hedge": PackedVector2Array(), "wall": PackedVector2Array(), "fence": PackedVector2Array(), "boards": PackedVector2Array()}
 	var fence_rails := PackedVector2Array()

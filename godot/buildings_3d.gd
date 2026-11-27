@@ -3432,14 +3432,24 @@ static func forest_node(rows: Array, grid: Dictionary, detail_at := Vector2.ZERO
 const RAILINGS := {"hedge": [0.8, 1.3, Color8(34, 62, 34)], "wall": [0.3, 1.5, Color8(175, 164, 144)],
 	"fence": [0.08, 1.2, Color8(205, 193, 157)], "boards": [0.12, 1.1, Color8(240, 242, 244)]}
 
+const RAILING_SAMPLE_M := 4.0  # a railing span follows the ground at least this often (at most 64 pieces a span)
 
-static func railings_node(rows: Array) -> MeshInstance3D:
+
+static func railings_node(rows: Array, grid := {}) -> MeshInstance3D:
 	var out := {"deck": PackedVector3Array(), "deck_colors": PackedColorArray()}
 	for row: Array in rows:
 		var style: Array = RAILINGS.get(row[0], RAILINGS["fence"])
 		var line: PackedVector2Array = row[1]
 		for i in line.size() - 1:
-			_sloped_wall(out, line[i], line[i + 1], style[0], 0.0, 0.0, style[1], style[2])
+			var pieces := 1 if grid.is_empty() else clampi(ceili(line[i].distance_to(line[i + 1]) / RAILING_SAMPLE_M), 1, 64)  # ground sampled along the span
+			var from := line[i]
+			var from_h := ground_height(grid, from)
+			for k in range(1, pieces + 1):
+				var to := line[i].lerp(line[i + 1], float(k) / pieces)
+				var to_h := ground_height(grid, to)
+				_sloped_wall(out, from, to, style[0], from_h, to_h, style[1], style[2])
+				from = to
+				from_h = to_h
 	if out["deck"].is_empty():
 		return null
 	var node := _instance(_mesh(out["deck"], out["deck_colors"]), _shared["ground"], LAYER_BUILDINGS)
