@@ -103,6 +103,7 @@ Ei sankaripuheita. Taksamittari käy.
 | `C` | Toggle compass |
 | `J` | Toggle train arrivals/departures board |
 | `1` / `2` / `3` | Camera (3D mode). Driving: third-person chase (default) / top-down map / driver-eye. On foot: `3` (or `1`) first-person walking, `2` top-down map; never the phone |
+| `O` | Raise/lower binoculars in outdoor first person (on foot or driver-eye): 2×, wheel or `+` / `-` steps 2/4/6/8×, the mouse aims; the whole view magnifies |
 | `L` | Cycle labels: none, streets, all places |
 | `R` | Reset the taxi to a road; an onboard fare can incur a penalty |
 | `T` | Reset the trip meter |

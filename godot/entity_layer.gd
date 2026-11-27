@@ -345,6 +345,7 @@ static func current_target(state: Dictionary) -> Dictionary:
 ## (Sampling in this node's own _process ran after main's - the camera then
 ## followed the previous frame's taxi: up to ~5 px of wobble at 30 km/h with
 ## uneven frame times, godot-08.)
+var drop_traffic := false  # visual tests only: draw no server pedestrians or NPC cars
 var extra_npcs: Array = []  # drawn as NPCs on top of the server's (visual_test.gd lineup)
 var extra_trains: Array = []  # and trains (a lineup tram)
 var extra_pedestrians: Array = []  # and people (visual_test.gd "bench_sitter")
@@ -353,6 +354,13 @@ var extra_pedestrians: Array = []  # and people (visual_test.gd "bench_sitter")
 func update_frame(delta: float) -> void:
 	_clock += delta
 	_frame = buffer.sample(now())
+	if drop_traffic and not _frame.is_empty():  # a visual test's clear street (visual_test.gd): no other walkers or cars
+		_frame = _frame.duplicate()
+		for key in ["a", "b"]:
+			var cleared: Dictionary = _frame[key].duplicate()
+			cleared["npcs"] = []
+			cleared["pedestrians"] = []
+			_frame[key] = cleared
 	if not (extra_npcs.is_empty() and extra_trains.is_empty() and extra_pedestrians.is_empty()) and not _frame.is_empty():  # a visual test's fixed lineup (visual_test.gd)
 		_frame = _frame.duplicate()
 		for key in ["a", "b"]:

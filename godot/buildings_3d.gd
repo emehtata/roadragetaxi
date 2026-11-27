@@ -74,6 +74,7 @@ var ground_elevation := 0.0  # the ground under the taxi (main.gd, map_layer.dec
 var eye_height := 1.35  # m above the ground: the driver's eyes, or a walker's (main.gd)
 var eye_ahead := 0.55  # m forward of windshield_at
 var eye_pitch := 0.0  # rad, up(+)
+var optical_fov := 0.0  # binoculars (docs/specs/binoculars-fps-moon.md): the narrowed vertical FOV (degrees) of the eye views, 0 = ordinary
 const EYE_TRANSITION_S := 0.6  # getting out of the taxi or back in: the eye glides between seat and standing height
 var _eye_from := Transform3D()
 var _eye_blend := 1.0
@@ -350,7 +351,7 @@ func _process(delta: float) -> void:
 		_camera.look_at(_camera.position + forward * 100.0, Vector3.UP)
 		if chase_on:
 			_camera.transform = chase_transform
-		_camera.fov = CameraModes.FOV if chase_on else FOV
+		_camera.fov = CameraModes.FOV if chase_on else (optical_fov if optical_fov > 0.0 else FOV)
 		if _eye_blend < 1.0:
 			_eye_blend = minf(1.0, _eye_blend + delta / EYE_TRANSITION_S)
 			_camera.transform = _eye_from.interpolate_with(_camera.transform, smoothstep(0.0, 1.0, _eye_blend))

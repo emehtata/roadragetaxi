@@ -22,6 +22,7 @@ const CarAudio := preload("res://car_audio.gd")
 const WildlifeLayer := preload("res://wildlife.gd")
 const Buildings3DScript := preload("res://buildings_3d.gd")
 const CameraModes := preload("res://camera_modes.gd")
+const Binoculars := preload("res://binoculars.gd")
 @onready var sim: SimClient = $SimClient
 @onready var map_layer: Node2D = $MapLayer
 @onready var entities: Node2D = $EntityLayer
@@ -85,6 +86,8 @@ var walk_eye := false  # first-person walking: the windshield view at the walkin
 var walk_chase := false  # on foot, key 1: the chase camera behind the walker
 var look_yaw := 0.0  # server heading convention (rad, counter-clockwise from east); the server walks this way
 var look_pitch := 0.0
+var _driver_aimed := false
+var binoculars := Binoculars.new()  # O in outdoor first person: docs/specs/binoculars-fps-moon.md
 var chase_mouse_sensitivity := 0.003  # settings: game/chase_mouse_sensitivity (rad per pixel)
 var chase_zoom_sensitivity := 0.1  # settings: game/chase_zoom_sensitivity (distance scale per wheel notch)
 const WALK_EYE_HEIGHT_M := 1.7
@@ -289,12 +292,17 @@ func _ready() -> void:
 	sim.chunk_unloaded.connect(_queue_chunk_unload)
 	sim.connection_changed.connect(_on_connection)
 	phone.sound.connect(func(group: String, variation: int): audio.handle_event({"type": "sound", "group": group, "variation": variation}))
-	phone.sound.connect(func(group: String, _variation: int): if group == "ui.phone_open": _refresh_chase_mouse())  # variation 0 opens, 1 closes: free / recapture the cursor
+	phone.sound.connect(func(group: String, variation: int):  # variation 0 opens, 1 closes: free / recapture the cursor; opening lowers the binoculars
+		if group == "ui.phone_open":
+			if variation == 0:
+				_lower_binoculars()
+			_refresh_chase_mouse())
 	if not InputMap.has_action("camera_reset"):  # the chase orbit back behind (docs/specs/3rd-person-mouse.md)
 		InputMap.add_action("camera_reset")
 		var reset_key := InputEventKey.new()
 		reset_key.keycode = KEY_C
 		InputMap.action_add_event("camera_reset", reset_key)
+	Binoculars.register_action()
 	phone.request.connect(func(action: String, item_id: String, request_id: int): sim.send_phone(action, item_id, request_id))
 	phone.open()
 	if _audiotest:
@@ -362,6 +370,7 @@ func _apply_language() -> void:
 
 func _on_connection(up: bool) -> void:
 	if not up:
+		_lower_binoculars()
 		home_first_person.leave()
 		home_walk.leave()
 		_home_plan_asked = false
@@ -498,6 +507,9 @@ func _input(event: InputEvent) -> void:
 	if walk_eye and _walk_look(event):
 		get_viewport().set_input_as_handled()
 		return
+	if binoculars.active and not walk_eye and _binoculars_look(event):
+		get_viewport().set_input_as_handled()
+		return
 	if _chase_live() and _chase_look(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -547,6 +559,15 @@ func _unhandled_input(event: InputEvent) -> void:
 					_home_pending = true
 				KEY_F12:
 					save_screenshot()
+		get_viewport().set_input_as_handled()
+		return
+	if binoculars.active and _start_sign == null and Binoculars.zoom_direction(event) != 0:
+		if _binoculars_zoom_owner():  # the phone or a text control keeps its wheel and keys; the map never zooms under binoculars
+			binoculars.zoom(Binoculars.zoom_direction(event))
+			get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed(Binoculars.ACTION, false, true):
+		_toggle_binoculars()
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton and event.pressed and _start_sign == null:
@@ -607,6 +628,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				lane_assist = not lane_assist
 			KEY_R:
 				_respawn_pending = true
+				_lower_binoculars()
 			KEY_H:
 				_home_pending = true
 			KEY_X:
@@ -622,6 +644,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					_engine_on = not bool(entities.shown_state().get("player", {}).get("engine_on", _engine_on))
 			KEY_F1:
 				_help.visible = not _help.visible
+				_lower_binoculars()
 			KEY_ESCAPE:
 				if _help.visible:
 					_help.visible = false
@@ -658,6 +681,7 @@ func _build_windshield() -> void:
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_windshield.add_child(frame)
+	binoculars.build_overlay(_windshield)
 	_windshield_view = TextureRect.new()
 	_windshield_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_windshield_view.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -679,6 +703,7 @@ func _build_windshield() -> void:
 func _set_windshield(on: bool, walking := false) -> void:
 	if on and (not MapChunk.outdoor_3d or (entities.player_body().is_empty() and not walking)):
 		return
+	binoculars.reset()  # a camera or taxi change never carries the optical zoom over
 	var chase := on and camera_modes.mode == CameraModes.Mode.THIRD
 	var switching: bool = on and _windshield.visible and ((walk_eye or walk_chase) != walking or chase != map_layer.buildings_3d.chase_on)  # out of the taxi or back in, 1/3: the eye glides over
 	if switching:
@@ -705,10 +730,65 @@ func _set_windshield(on: bool, walking := false) -> void:
 		map_layer.buildings_3d.eye_height = WALK_EYE_HEIGHT_M if walk_eye else 1.35
 		map_layer.buildings_3d.eye_ahead = 0.0 if walk_eye else 0.55
 		map_layer.buildings_3d.eye_pitch = 0.0
+		map_layer.buildings_3d.optical_fov = 0.0
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if (walk_eye or chase_mouse_wanted()) and _may_capture() else Input.MOUSE_MODE_VISIBLE
 	if _visual_test != null:
 		print("visual-test: mouse_mode=%d" % Input.mouse_mode)
 
+
+## Binoculars (docs/specs/binoculars-fps-moon.md) need an outdoor first-person eye: on foot or at the wheel.
+func _binoculars_eligible() -> bool:
+	return _start_sign == null and not home_first_person.visible and _windshield.visible and map_layer.buildings_3d != null \
+		and not map_layer.buildings_3d.chase_on and camera_modes.mode == CameraModes.Mode.EYE
+
+
+func _toggle_binoculars() -> void:
+	if binoculars.active:
+		binoculars.lower()
+	elif _binoculars_eligible() and not phone.is_open:  # the open phone owns its input: close it (P) first
+		binoculars.raise(Buildings3DScript.FOV)
+		binoculars.set_hint(T.text("binoculars_hint", language))
+	_binoculars_mouse()
+
+
+func _lower_binoculars() -> void:
+	binoculars.reset()
+	_binoculars_mouse()
+
+
+## Wheel and +/- belong to the binoculars unless the phone or a text control has them.
+func _binoculars_zoom_owner() -> bool:
+	return not phone.is_open and not (get_viewport().gui_get_focus_owner() is LineEdit or get_viewport().gui_get_focus_owner() is TextEdit)
+
+
+## The driver's eye has no mouse look of its own: binoculars aim the camera only while the cursor is captured.
+func _binoculars_mouse() -> void:
+	if not walk_eye and _windshield != null and _windshield.visible and not _chase_live():
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if binoculars.active and _may_capture() and not phone.is_open else Input.MOUSE_MODE_VISIBLE
+
+
+func _binoculars_look(event: InputEvent) -> bool:
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		binoculars.look(event.relative, home_first_person.mouse_sensitivity)
+		return true
+	return false
+
+
+## Every frame: ease the FOV, and let go of the binoculars when the view stops being outdoor first person.
+func _update_binoculars(delta: float) -> void:
+	if binoculars.active and (not _binoculars_eligible() or _help.visible or summary_shown):
+		_lower_binoculars()
+	binoculars.update(delta)
+	var layer = map_layer.buildings_3d
+	if layer != null:
+		layer.optical_fov = binoculars.optical_fov()
+		var driver_aim: bool = (binoculars.active or binoculars.yaw != 0.0 or binoculars.pitch != 0.0) and not walk_eye and _windshield.visible and not layer.chase_on and not entities.player_body().is_empty()
+		if driver_aim:  # the driver's seat: aim only the camera, the taxi is not steered; lowering keeps the aim (exit paths clear it)
+			layer.windshield_heading = float(entities.player_body()["heading"]) + binoculars.yaw
+			layer.eye_pitch = binoculars.pitch
+		elif _driver_aimed:
+			layer.eye_pitch = 0.0
+		_driver_aimed = driver_aim
 
 ## The cursor is captured; headless cannot capture, so there Esc/click state stands in (test seam).
 var _cursor_freed := false
@@ -757,7 +837,7 @@ func _chase_look(event: InputEvent) -> bool:
 ## with each command); Esc frees the cursor, a click takes it back.
 func _walk_look(event: InputEvent) -> bool:
 	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		var sensitivity: float = home_first_person.mouse_sensitivity
+		var sensitivity: float = home_first_person.mouse_sensitivity * binoculars.sensitivity_scale()
 		look_yaw = wrapf(look_yaw - event.relative.x * sensitivity, -PI, PI)
 		look_pitch = clampf(look_pitch - event.relative.y * sensitivity, -LOOK_PITCH_LIMIT, LOOK_PITCH_LIMIT)
 		map_layer.buildings_3d.eye_pitch = look_pitch
@@ -795,6 +875,7 @@ func _notification(what: int) -> void:
 		drive.clear()
 		_pan_button = 0
 		_command_timer = 0.0
+		_lower_binoculars()
 
 
 func _process(delta: float) -> void:
@@ -875,6 +956,7 @@ func _process(delta: float) -> void:
 			map_layer.buildings_3d.windshield_at = body["position"]
 			map_layer.buildings_3d.windshield_heading = body["heading"]
 			map_layer.buildings_3d.windshield_elevation = map_layer.deck_height(body["position"], 0)
+	_update_binoculars(delta)
 	if _focus.get("kind") == "pan":
 		camera.position = _focus["position"]
 	elif _focus.has("id"):
@@ -1166,6 +1248,8 @@ func set_interior_paused(paused: bool) -> void:
 	sim.process_mode = Node.PROCESS_MODE_ALWAYS if paused else Node.PROCESS_MODE_INHERIT
 	home_first_person.set_paused(paused)
 	_refresh_chase_mouse(paused)
+	if paused:
+		_lower_binoculars()
 
 
 ## Settings: wheel zoom step and the per-mode chase distance limits (m).
