@@ -33,7 +33,14 @@ WINDOWS_GODOT = Path("/mnt/c/Godot/Godot_v4.7.2-stable_win64_console.exe")
 
 
 def scenarios() -> dict:
-    return {s["id"]: s for s in json.loads(REGISTRY.read_text(encoding="utf-8"))["scenarios"]}
+    """The registry by id. A scenario with `extends` takes that scenario's fields first; its own override them (null removes one)."""
+    rows = {s["id"]: s for s in json.loads(REGISTRY.read_text(encoding="utf-8"))["scenarios"]}
+    for id_, s in list(rows.items()):
+        if "extends" in s:
+            merged = {k: v for k, v in rows[s["extends"]].items() if k != "extends"}
+            merged.update({k: v for k, v in s.items() if k != "extends"})
+            rows[id_] = {k: v for k, v in merged.items() if v is not None}
+    return rows
 
 
 def _godot() -> Path:
@@ -118,6 +125,7 @@ def run_one(scenario: dict, start_time: str, out_root: Path) -> dict:
         godot = _godot()
         project = _host_path(REPO / "godot", godot)
         engine = [] if godot.suffix == ".exe" else ["--display-driver", "x11", "--rendering-driver", "opengl3"]
+        engine += scenario.get("engine_args", [])  # e.g. --rendering-method forward_plus --rendering-driver vulkan
         client = ["--port", str(port), "--zoom", str(scenario.get("zoom", 1.0)),
                   "--visual-test", _host_path(out / "scenario.json", godot), *scenario.get("godot_args", [])]
         if scenario.get("view", "3d") == "2d" and not scenario.get("no_view_flag"):  # 3D is the client's default

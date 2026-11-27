@@ -59,6 +59,12 @@ var _crossbuck_mesh_vertices := {}  # audit-only matching of the mapped crossing
 var _tower_mesh_vertices := {}  # audit-only cached 1 mm membership checks against the actual mapped tower mesh
 var _roof_shelter_evidence := {}
 var _moon_phase_evidence := {}
+var _binoc_phase := 0  # "binoculars" scenarios: 0 raise (O), 1 settle at 2x, 2 wheel steps, 3 settle, 4 lower (O) and settle, 9 done
+var _binoc_wait := 0.0
+var _binoc_pending := 0
+var _binoc_gap := 0.0
+var _binoc_2x := {}  # what the 2x view looked like: the image and measurements the later magnification must reproduce
+var _binoc_evidence := {}
 var _felled_occluders := {}  # audit-only cached triangle BVHs for actual drawn buildings
 
 
@@ -135,6 +141,334 @@ func _walk(delta: float) -> void:
 				_walk_phase = 6
 	elif _walk_phase == 5 and not state.get("on_foot", true):
 		_walk_phase = 6
+
+
+## "binoculars" scenarios (docs/specs/binoculars-fps-moon.md): the player's own controls, pressed
+## as events once the walker stands and looks at the fixed aim: O raises (2x), `steps` wheel notches
+## up (to 8x at 3), `lower` O again. The FOV is never set here; the 2x view is kept to predict the later one.
+func _press(code: Key) -> void:
+	var press := InputEventKey.new()
+	press.keycode = code
+	press.physical_keycode = code
+	press.pressed = true
+	Input.parse_input_event(press)
+	var release := press.duplicate()
+	release.pressed = false
+	Input.parse_input_event(release)
+
+
+func _binoculars(delta: float) -> void:
+	var spec: Dictionary = scenario["binoculars"]
+	var bino = main.binoculars
+	if _binoc_phase == 9 and bino.active == bool(spec.get("lower", false)):  # a ride offer opened the phone: the binoculars went down; start over
+		_binoc_phase = 0
+		_binoc_2x = {}
+	if _walk_phase < 6 or not main.walk_eye or Buildings3D.current == null:
+		return
+	# The manual aim is the scenario's, as _walk set it. If anything (the first-person switch after a late
+	# state) reset it, put it back and start over: no reference may be taken from another view.
+	var walk: Dictionary = scenario["walk"]
+	var want_yaw := wrapf(float(scenario["pose"][2]) + float(walk.get("yaw", 0.0)), -PI, PI)
+	var want_pitch := float(walk.get("pitch", 0.0))
+	if absf(angle_difference(main.look_yaw, want_yaw)) > 1e-4 or absf(main.look_pitch - want_pitch) > 1e-4:
+		main.look_yaw = want_yaw
+		main.look_pitch = want_pitch
+		Buildings3D.current.eye_pitch = want_pitch
+		main._lower_binoculars()
+		_binoc_phase = 0
+		_binoc_2x = {}
+		_binoc_wait = 0.0
+		return
+	if _binoc_phase in [1, 2, 3] and not bino.active:  # lowered by something else (the phone, a view change)
+		_binoc_phase = 0
+		_binoc_2x = {}
+		_binoc_wait = 0.0
+		return
+	if _binoc_phase == 9:
+		return
+	var wanted := 2.0 if _binoc_phase < 3 else float(bino.STEPS[clampi(int(spec.get("steps", 0)), 0, 3)])
+	var settled: bool = bino.active and absf(bino.shown_magnification() - wanted) < 1e-4
+	if _binoc_phase in [1, 3]:
+		_binoc_wait = _binoc_wait + delta if settled else 0.0
+	_binoc_gap -= delta
+	match _binoc_phase:
+		0:
+			if _binoc_map_ready() and not _binoc_view_blocked():  # the 2x view is the reference for the later one: raise only on the finished scene
+				_press(KEY_O)
+				_binoc_phase = 1
+		1:
+			if _binoc_wait > 0.5 and _binoc_map_ready() and not _binoc_view_blocked():
+				_binoc_2x = _binoc_view()
+				_binoc_2x["chunks"] = _binoc_chunks_in_view().keys()
+				_binoc_pending = int(spec.get("steps", 0))
+				_binoc_phase = 2 if _binoc_pending > 0 else 3
+				_binoc_wait = 0.0
+		2:
+			if _binoc_gap <= 0.0:
+				var wheel := InputEventMouseButton.new()  # the real wheel: up
+				wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+				wheel.pressed = true
+				Input.parse_input_event(wheel)
+				_binoc_pending -= 1
+				_binoc_gap = 0.2
+				_binoc_phase = 2 if _binoc_pending > 0 else 3
+		3:
+			if _binoc_wait > 0.5:
+				if spec.get("lower", false):
+					_press(KEY_O)
+					_binoc_phase = 4
+					_binoc_wait = 0.0
+				else:
+					_binoc_phase = 9
+		4:
+			_binoc_wait += delta
+			if _binoc_wait > 0.8:
+				_binoc_phase = 9
+
+
+## The chunks the 3D camera can see: those meeting a triangle from the eye along the aim, as wide as the
+## unmagnified view (so it holds the 2x and the 8x picture) and 600 m deep. The 2D canvas rect is no guide.
+func _binoc_chunks_in_view() -> Dictionary:
+	var found := {}
+	var camera: Camera3D = Buildings3D.current._camera
+	var eye := Vector2(camera.global_position.x, camera.global_position.z)
+	var aim := Vector2(-camera.global_basis.z.x, -camera.global_basis.z.z).normalized()
+	var size: Vector2 = main.get_viewport().get_visible_rect().size
+	var half := atan(tan(deg_to_rad(Buildings3D.FOV) / 2.0) * size.x / size.y) + deg_to_rad(3.0)
+	var cone := PackedVector2Array([eye, eye + aim.rotated(-half) * 600.0, eye + aim.rotated(half) * 600.0])
+	for key in main.map_layer._chunks:
+		var rect: Rect2 = main.map_layer._chunks[key]._bounds_rect
+		var box := PackedVector2Array([rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)])
+		if rect.has_point(eye) or not Geometry2D.intersect_polygons(cone, box).is_empty():
+			found[key] = main.map_layer._chunks[key]
+	return found
+
+
+## Every chunk in the camera's view has its meshes, lamps and forest built, and no chunk arrived for a while.
+func _binoc_map_ready() -> bool:
+	if not main._chunk_queue.is_empty() or main.map_layer.chunk_count() == 0:
+		return false
+	if Time.get_ticks_msec() - _chunks_changed_msec < 3000 or _elapsed < 20.0:
+		return false
+	var visible := _binoc_chunks_in_view()
+	for chunk in visible.values():
+		if chunk._building_task >= 0 or chunk._forest_task >= 0 or chunk._lamp_task >= 0:
+			return false
+	return not visible.is_empty()
+
+
+## A walker or a moving car on the line of sight to the middle of the target hides the aimed street target: it
+## stands within the target's width of the ray, which passes less than 1.5 m above the ground there.
+func _binoc_view_blocked() -> bool:
+	return _binoc_blocker() != ""
+
+
+## What blocks the sight line: "" or a description. A walker is 1.9 m tall, a car 2 m, a bus or truck 4.2 m.
+func _binoc_blocker() -> String:
+	var target: Dictionary = scenario["binoculars"].get("target", {})
+	if target.get("kind", "") != "points" or Buildings3D.current == null:
+		return ""
+	var camera: Camera3D = Buildings3D.current._camera
+	var eye := Vector2(camera.global_position.x, camera.global_position.z)
+	var middle := 0.0
+	var aim := Vector2.ZERO
+	for row: Array in target["points"]:
+		var local := MapMath.point(main.entities.origin, row[0], row[1])
+		middle += (main.map_layer.deck_height(local, 0) + float(row[2])) / target["points"].size()
+		aim += local / target["points"].size()
+	var distance := eye.distance_to(aim)
+	var along := (aim - eye) / distance
+	var slope := (middle - camera.global_position.y) / distance
+	var rows: Array = []
+	for at: Vector2 in main.entities.pedestrian_positions(256):
+		rows.append([at, 1.9, "walker"])
+	for car in main.entities.npc_cars():
+		rows.append([car[1], 4.2 if str(car[2].get("vehicle_type", "car")) in ["bus", "truck", "tram", "tractor"] else 2.0, "car"])
+	for row: Array in rows:
+		var at: Vector2 = row[0]
+		var t := (at - eye).dot(along)
+		var lateral := absf((at - eye).cross(along))
+		if t > 1.5 and t < distance and lateral < 0.6 + 0.04 * t \
+				and camera.global_position.y + slope * t - main.map_layer.deck_height(at, 0) < float(row[1]):
+			return "a %s %.1f m ahead" % [row[2], t]
+	return ""
+
+
+## The camera, the aim and the image now, and the target's projected bounds.
+func _binoc_view() -> Dictionary:
+	var camera: Camera3D = Buildings3D.current._camera
+	var image: Image = Buildings3D.current._view.get_texture().get_image()
+	var forward := -camera.global_basis.z
+	var view := {"base_fov": Buildings3D.FOV, "fov": camera.fov, "magnification": main.binoculars.shown_magnification(), "active": main.binoculars.active,
+		"eye": [camera.global_position.x, camera.global_position.y, camera.global_position.z], "aim": [forward.x, forward.y, forward.z], "image": image}
+	var target: Dictionary = scenario["binoculars"].get("target", {})
+	if target.get("kind", "") == "points":
+		var box := Rect2()
+		var behind := false
+		for i in target["points"].size():
+			var row: Array = target["points"][i]
+			var local := MapMath.point(main.entities.origin, row[0], row[1])
+			var at := Buildings3D.to_3d(local, main.map_layer.deck_height(local, 0) + float(row[2]))
+			behind = behind or camera.is_position_behind(at)
+			var px := camera.unproject_position(at)
+			box = Rect2(px, Vector2.ZERO) if i == 0 else box.expand(px)
+		view["target_bounds_px"] = [box.position.x, box.position.y, box.end.x, box.end.y]
+		view["target_behind"] = behind
+		var first: Array = target["points"][0]
+		var first_local := MapMath.point(main.entities.origin, first[0], first[1])
+		view["target_distance_m"] = Vector2(camera.global_position.x, camera.global_position.z).distance_to(first_local)
+	elif target.get("kind", "") == "moon":
+		var moon: Dictionary = preload("res://visual_test_moon_roofs.gd").moon(main, scenario["binoculars"].get("moon", {"illumination": [0, 1]}))
+		view["moon"] = moon
+	return view
+
+
+## Pearson correlation of the luminance of two same-size images (both shrunk to a 160x90 grid).
+static func _correlation(a: Image, b: Image) -> float:
+	var small := [a.duplicate(), b.duplicate()]
+	for image: Image in small:
+		image.resize(160, 90, Image.INTERPOLATE_BILINEAR)
+	var xs := PackedFloat32Array()
+	var ys := PackedFloat32Array()
+	for y in 90:
+		for x in 160:
+			xs.append(small[0].get_pixel(x, y).get_luminance())
+			ys.append(small[1].get_pixel(x, y).get_luminance())
+	var mx := 0.0
+	var my := 0.0
+	for i in xs.size():
+		mx += xs[i]
+		my += ys[i]
+	mx /= xs.size()
+	my /= xs.size()
+	var sxy := 0.0
+	var sxx := 0.0
+	var syy := 0.0
+	for i in xs.size():
+		sxy += (xs[i] - mx) * (ys[i] - my)
+		sxx += (xs[i] - mx) * (xs[i] - mx)
+		syy += (ys[i] - my) * (ys[i] - my)
+	return sxy / maxf(sqrt(sxx * syy), 1e-9)
+
+
+func _binoculars_readiness() -> Array:
+	var spec: Dictionary = scenario["binoculars"]
+	var bino = main.binoculars
+	var missing := []
+	_binoc_evidence = {"phase": _binoc_phase}
+	if _binoc_phase != 9:
+		var blocker := _binoc_blocker()
+		return ["binoculars sequence waiting (phase %d, map ready %s, sight line %s, shown %.2fx)" % [_binoc_phase, _binoc_map_ready(), "blocked by " + blocker if blocker != "" else "clear", bino.shown_magnification()]]
+	var view := _binoc_view()
+	var blocker := _binoc_blocker()
+	if blocker != "": missing.append("the sight line to the aimed target is blocked by " + blocker)
+	if not _binoc_map_ready(): missing.append("the chunks in the camera's view are not all built")
+	if not _binoc_2x.is_empty():  # the reference and this picture come from the same geometry
+		var now := _binoc_chunks_in_view().keys()
+		var then: Array = _binoc_2x["chunks"]
+		now.sort()
+		then.sort()
+		if now != then: missing.append("the chunks in the view changed since the 2x capture (%d then, %d now)" % [then.size(), now.size()])
+	var steps := clampi(int(spec.get("steps", 0)), 0, 3)
+	var lowered: bool = spec.get("lower", false)
+	var want_mag: float = 1.0 if lowered else float(bino.STEPS[steps])
+	var want_fov: float = Buildings3D.FOV if lowered else bino.fov_for(Buildings3D.FOV, want_mag)
+	if not main.walk_eye: missing.append("not in on-foot first person")
+	if bino.active == lowered: missing.append("binoculars %s, the scenario needs them %s" % ["raised" if bino.active else "lowered", "lowered" if lowered else "raised"])
+	if absf(float(view["fov"]) - want_fov) > 1e-4 or (lowered and float(view["fov"]) != Buildings3D.FOV):
+		missing.append("camera FOV %.4f, the %sx view needs %.4f" % [view["fov"], want_mag, want_fov])
+	var origin: Vector2 = main.entities.origin
+	var record := {"base_fov": view["base_fov"], "fov": view["fov"], "magnification": want_mag, "eye": view["eye"], "aim": view["aim"], "lowered": lowered,
+		"eye_map_xy": [view["eye"][0] + origin.x, origin.y - view["eye"][2]]}
+	if not _binoc_2x.is_empty():
+		var same_aim: float = Vector3(_binoc_2x["aim"][0], _binoc_2x["aim"][1], _binoc_2x["aim"][2]).dot(Vector3(view["aim"][0], view["aim"][1], view["aim"][2]))
+		var eye_move: float = Vector3(_binoc_2x["eye"][0], _binoc_2x["eye"][1], _binoc_2x["eye"][2]).distance_to(Vector3(view["eye"][0], view["eye"][1], view["eye"][2]))
+		record["aim_dot_2x"] = same_aim
+		record["eye_move_m"] = eye_move
+		if same_aim < 1.0 - 1e-6 or eye_move > 0.02: missing.append("the aim or the eye moved between 2x and %sx (dot %.8f, %.3f m)" % [want_mag, same_aim, eye_move])
+		var ratio: float = tan(deg_to_rad(float(_binoc_2x["fov"])) / 2.0) / tan(deg_to_rad(float(view["fov"])) / 2.0)
+		record["projection_ratio"] = ratio
+		if want_mag > 2.0 and not lowered and not spec.get("target", {}).get("hidden", false):  # (a flat overcast image has nothing to correlate: checked directly below)
+			var matched := _correlation(_crop_scaled(_binoc_2x["image"], ratio), view["image"])
+			var unmatched := _correlation(_binoc_2x["image"], view["image"])
+			if not FileAccess.file_exists(out_dir.path_join("binoculars_2x.png")):  # kept for the inspection of a failed correlation
+				_binoc_2x["image"].save_png(out_dir.path_join("binoculars_2x.png"))
+				view["image"].save_png(out_dir.path_join("binoculars_now.png"))
+				_crop_scaled(_binoc_2x["image"], ratio).save_png(out_dir.path_join("binoculars_2x_enlarged.png"))
+			record["whole_view_correlation"] = matched
+			record["unmagnified_correlation"] = unmatched
+			if matched < float(spec.get("min_correlation", 0.8)) or matched < unmatched + float(spec.get("min_margin", 0.02)):
+				missing.append("the %sx image is not the 2x image magnified %.1fx (correlation %.3f vs %.3f unmagnified)" % [want_mag, ratio, matched, unmatched])
+	var size := Vector2(main.get_viewport().get_visible_rect().size)
+	var target: Dictionary = spec.get("target", {})
+	if view.has("target_bounds_px"):
+		var b: Array = view["target_bounds_px"]
+		record["target_bounds_px"] = b
+		record["target_distance_m"] = view["target_distance_m"]
+		if view["target_behind"] or b[0] < 0.0 or b[1] < 0.0 or b[2] > size.x or b[3] > size.y:
+			missing.append("the aimed target %s is not fully inside the %s view" % [b, size])
+		if not _binoc_2x.is_empty() and want_mag > 2.0 and not lowered:
+			var b2: Array = _binoc_2x["target_bounds_px"]
+			var expected := float(b2[2] - b2[0]) * float(record["projection_ratio"])
+			record["target_width_px"] = float(b[2] - b[0])
+			record["target_width_predicted_px"] = expected
+			if absf(float(b[2] - b[0]) - expected) > 0.02 * expected + 3.0:
+				missing.append("target width %.1f px, the 2x capture predicts %.1f px" % [float(b[2] - b[0]), expected])
+		missing.append_array(_target_building_missing(target))
+	if view.has("moon"):
+		var moon: Dictionary = view["moon"]
+		record["moon"] = moon
+		if not target.get("hidden", false):
+			if not moon.get("inside_view", false): missing.append("the Moon disc is not fully inside the view")
+			missing.append_array(moon.get("missing", []))
+			var extent := float(moon.get("lit_extent_px", 0))
+			record["moon_lit_extent_px"] = extent
+			if not _binoc_2x.is_empty() and want_mag > 2.0 and not lowered:
+				var extent2 := float(_binoc_2x["moon"].get("lit_extent_px", 0))
+				var predicted := extent2 * float(record["projection_ratio"])
+				record["moon_lit_extent_predicted_px"] = predicted
+				if absf(extent - predicted) > 0.03 * predicted + 3.0:
+					missing.append("Moon lit extent %.0f px, the 2x capture predicts %.0f px" % [extent, predicted])
+			if lowered:
+				var predicted := 2.0 * float(moon.get("radius_px", 0.0))
+				record["moon_lit_extent_predicted_px"] = predicted
+				if absf(extent - predicted) > 0.1 * predicted + 3.0:
+					missing.append("lowered: Moon lit extent %.0f px, the ordinary FOV predicts about %.0f px" % [extent, predicted])
+		else:  # full overcast: the clouds occlude the Moon however it is magnified
+			if not moon.get("inside_view", false): missing.append("the occluded Moon is not inside the view")
+			if float(moon.get("surface_contrast", 1.0)) > float(target.get("max_surface_contrast", 0.02)) or float(moon.get("lit_fraction", 1.0)) > float(target.get("max_lit_fraction", 0.0)):
+				missing.append("Moon surface contrast %.3f, lit fraction %.3f: not occluded by the overcast" % [moon.get("surface_contrast", 0.0), moon.get("lit_fraction", 0.0)])
+	_binoc_evidence = record
+	return missing
+
+
+## The middle 1/ratio of an image, enlarged ratio times: where that part of the view lands at ratio times the magnification.
+static func _crop_scaled(image: Image, ratio: float) -> Image:
+	var w := int(round(image.get_width() / ratio))
+	var h := int(round(image.get_height() / ratio))
+	var crop := image.get_region(Rect2i((image.get_width() - w) / 2, (image.get_height() - h) / 2, w, h))
+	crop.resize(image.get_width(), image.get_height(), Image.INTERPOLATE_BILINEAR)
+	return crop
+
+
+## A "points" target with `building_at` needs a loaded building footprint holding that point (the mapped building, not an empty gap).
+func _target_building_missing(target: Dictionary) -> Array:
+	if not target.has("building_at"):
+		return []
+	var row: Array = target["building_at"]  # a point inside the mapped footprint, beside the target corner
+	var local := MapMath.point(main.entities.origin, row[0], row[1])
+	for chunk in main.map_layer._chunks.values():
+		for footprint in chunk._data.get("buildings", []):
+			if Geometry2D.is_point_in_polygon(local, chunk._points(footprint)):
+				return []
+	var nearest := INF
+	var count := 0
+	for chunk in main.map_layer._chunks.values():
+		for footprint in chunk._data.get("buildings", []):
+			count += 1
+			for q in chunk._points(footprint):
+				nearest = minf(nearest, q.distance_to(local))
+	return ["no loaded building footprint holds the target point %s (local %s; %d footprints, nearest vertex %.1f m)" % [row, local, count, nearest]]
 
 
 ## "lineup": every kind the 2D view draws, in rows east of the pose, heading east, at the sizes
@@ -232,7 +566,7 @@ func _nature_profile_state(message: Dictionary) -> void:
 func _ready() -> void:
 	if scenario.get("nature_profile",false): main.sim.state_received.connect(_nature_profile_state)
 	if scenario.has("street_broken"):main.sim.state_received.connect(_street_broken_state)
-	if scenario.has("indoor_hint") or scenario.get("snow_visibility", false) or scenario.get("nature_profile",false):
+	if scenario.has("indoor_hint") or scenario.get("snow_visibility", false) or scenario.get("nature_profile",false) or (scenario.has("binoculars") and scenario.has("resolution")):
 		main.get_window().mode = Window.MODE_WINDOWED
 		main.get_window().size = Vector2i(scenario["resolution"][0], scenario["resolution"][1])
 	# The driving camera: "camera" (or the last of "switch"); without either the map view as before (3 for "windshield").
@@ -330,6 +664,10 @@ func _process(delta: float) -> void:
 		_place_animals()
 	if scenario.has("walk"):
 		_walk(delta)
+	if scenario.get("binoculars", {}).get("clear_street", false):
+		main.entities.drop_traffic = true  # no random walker or car can stand in the sight line
+	if scenario.has("binoculars"):
+		_binoculars(delta)
 	if scenario.get("windshield", false) and not _windshield_pressed and not main.entities.player_body().is_empty():
 		var key := InputEventKey.new()
 		key.keycode = KEY_3  # the driver's eyes
@@ -1066,6 +1404,10 @@ func check() -> Array:
 			_roof_shelter_evidence = preload("res://visual_test_moon_roofs.gd").roofs(main,scenario.requires.roof_shelters)
 		_counts["roof_shelters"] = _roof_shelter_evidence
 		missing.append_array(_roof_shelter_evidence.missing)
+	if scenario.has("binoculars"):
+		var bino_missing := _binoculars_readiness()
+		_counts["binoculars"] = _binoc_evidence
+		missing.append_array(bino_missing)
 	var requires: Dictionary = scenario.get("requires", {})
 	if requires.get("rider_parts", false):  # docs/specs/terrain-following-bodies.md part 4: a posed person rides, not two boxes
 		var person: int = Buildings3D.person_arrays(Color.RED, "walk_0", 1.0, "", 0)["verts"].size()

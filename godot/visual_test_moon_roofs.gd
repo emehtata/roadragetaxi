@@ -29,6 +29,10 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	var up := direction.cross(side)
 	var radius := sqrt(1.0 - 0.99985 * 0.99985)
 	var image: Image = layer._view.get_texture().get_image()
+	var limb := center.distance_to(camera.unproject_position(at + side * camera.far * 0.5 * radius))  # the disc's projected radius: the scan follows it, whatever the magnification
+	var reach := int(ceil(limb * 1.1)) + 2
+	var lit_min := Vector2i(1 << 30, 1 << 30)
+	var lit_max := Vector2i(-1, -1)
 	var bright := 0
 	var count := 0
 	var wrong := 0
@@ -38,8 +42,8 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	var surface_min := 1.0
 	var surface_max := 0.0
 	var clipped := 0
-	for y in range(maxi(0, int(center.y)-60), mini(image.get_height(), int(center.y)+61)):
-		for x in range(maxi(0, int(center.x)-60), mini(image.get_width(), int(center.x)+61)):
+	for y in range(maxi(0, int(center.y)-reach), mini(image.get_height(), int(center.y)+reach+1)):
+		for x in range(maxi(0, int(center.x)-reach), mini(image.get_width(), int(center.x)+reach+1)):
 			var ray := camera.project_ray_normal(Vector2(x+.5,y+.5))
 			var p := Vector2(ray.dot(side),ray.dot(up))/radius
 			if p.length_squared() > .92: continue
@@ -52,6 +56,9 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 				surface_max = maxf(surface_max, value)
 				clipped += int(value > .98)
 			count += 1
+			if lit:
+				lit_min = Vector2i(mini(lit_min.x, x), mini(lit_min.y, y))
+				lit_max = Vector2i(maxi(lit_max.x, x), maxi(lit_max.y, y))
 			bright += int(lit)
 			if absf(incidence) > .05: wrong += int(lit != (incidence > 0))
 			if p.x > -phase_cos+.03 and incidence < -.02 and not lit: diagnostic += 1
@@ -66,7 +73,9 @@ static func moon(main: Node, request: Dictionary) -> Dictionary:
 	if request.get("surface_texture", false):
 		if surface_samples < 100 or contrast < .1: missing.append("Moon lit interior lacks surface texture contrast")
 		if clipped_fraction > .05: missing.append("Moon lit interior clips to white")
-	return {"missing":missing,"illumination":phase,"lit_fraction":fraction,"samples":count,"mask_mismatches":wrong,"curved_limb_samples":diagnostic,"surface_samples":surface_samples,"surface_contrast":contrast,"surface_clipped_fraction":clipped_fraction,"pole_alignment":pole_alignment,"east_right_alignment":east_right_alignment}
+	var inside := center.x - limb >= 0.0 and center.y - limb >= 0.0 and center.x + limb <= image.get_width() and center.y + limb <= image.get_height()
+	if request.get("inside_view", false) and not inside: missing.append("Moon disc (radius %.0f px at %s) is not fully inside the %s view" % [limb, center, image.get_size()])
+	return {"missing":missing,"center_px":[center.x,center.y],"radius_px":limb,"inside_view":inside,"lit_extent_px":maxi(lit_max.x-lit_min.x,lit_max.y-lit_min.y)+1 if lit_max.x >= 0 else 0,"illumination":phase,"lit_fraction":fraction,"samples":count,"mask_mismatches":wrong,"curved_limb_samples":diagnostic,"surface_samples":surface_samples,"surface_contrast":contrast,"surface_clipped_fraction":clipped_fraction,"pole_alignment":pole_alignment,"east_right_alignment":east_right_alignment}
 
 static func roofs(main: Node, targets: Array) -> Dictionary:
 	var missing := []
