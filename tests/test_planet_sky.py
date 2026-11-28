@@ -124,7 +124,7 @@ def test_offline_assets_and_scenario_contract(monkeypatch):
     # no kernel, timescale file or download: the provider is the bundled, already shipped PyEphem
     source = (ROOT / "src/theroadragetrip/planets.py").read_text()
     assert not re.search(r"^\s*(import|from)\s+(urllib|requests|skyfield|http|socket)", source, re.M)
-    assert re.search(r'^\s+"ephem"', (ROOT / "pyproject.toml").read_text(), re.M) and "ephem" in collect_licenses.RUNTIME
+    assert re.search(r'^\s+"ephem[<>=,0-9.]*"', (ROOT / "pyproject.toml").read_text(), re.M) and "ephem" in collect_licenses.RUNTIME
     assert "skyfield" not in (ROOT / "pyproject.toml").read_text().lower() and "skyfield" not in (ROOT / "requirements.txt").read_text().lower()
     inventory = json.loads((ROOT / "tools/license_inventory.json").read_text())
     assert inventory["python_packages"]["ephem"]["status"] == "verified" and "credit" in inventory["python_packages"]["ephem"]["obligations"]
