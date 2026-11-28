@@ -1271,6 +1271,164 @@ func _measure_star_readiness(request: Dictionary) -> Array:
 	return _star_missing
 
 
+var _planet_last_check_ms := -1000
+var _planet_missing: Array = []
+var _planet_seen := {}
+var _planet_sampling := false
+var _planet_sample_key: Array = []
+
+## docs/planet-sky.md: each requested planet's real pixel contribution in the actual 3D sky, sampled before measurement.
+func _planet_readiness() -> Array:
+	var request: Dictionary = scenario.get("requires",{}).get("planets",{})
+	if request.is_empty(): return []
+	var layer=main.map_layer.buildings_3d
+	if layer==null or _elapsed<10.0: return ["waiting for the planet sky camera and streamed context"]
+	var key: Array=[layer.planet_state.get("utc"),layer.planet_state.get("observer"),roundi(layer.star_pollution*100),layer._camera.global_transform,layer.planet_levels]
+	if _measuring or (key==_planet_sample_key and not _planet_seen.is_empty() and _planet_missing.is_empty()):
+		_counts["planets"]=_planet_seen
+		return _planet_missing
+	if _planet_sampling: return ["sampling planet contribution against the same sky with planets disabled"]
+	if Time.get_ticks_msec()-_planet_last_check_ms<500: return ["waiting for settled planet-sky inputs"]+_planet_missing
+	_planet_sample_key=key.duplicate(true)
+	_planet_sampling=true
+	_sample_planet_readiness(request)
+	return ["sampling planet contribution against the same sky with planets disabled"]
+
+
+func _sample_planet_readiness(request: Dictionary) -> void:
+	_planet_missing=await _measure_planet_readiness(request)
+	_planet_sampling=false
+
+
+## Linear RGB difference of the pixel with the largest contrast in a 5x5 patch.
+func _planet_patch(image: Image, without: Image, pixel: Vector2i) -> Dictionary:
+	var best := Vector3.ZERO
+	var peak := 0.0
+	for x in range(-2,3):
+		for y in range(-2,3):
+			var c:=image.get_pixel(pixel.x+x,pixel.y+y).srgb_to_linear()
+			var b:=without.get_pixel(pixel.x+x,pixel.y+y).srgb_to_linear()
+			var d:=Vector3(c.r-b.r,c.g-b.g,c.b-b.b)
+			if (d.x+d.y+d.z)/3.0>peak:
+				peak=(d.x+d.y+d.z)/3.0
+				best=d
+	return {"contrast":peak,"rgb":best}
+
+
+## [the 3D view image, the window image the screenshot shows]: HUD panels hide planets only in the second.
+func _planet_frame() -> Array:
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	return [main.map_layer.buildings_3d._view.get_texture().get_image(), get_viewport().get_texture().get_image()]
+
+
+func _measure_planet_readiness(request: Dictionary) -> Array:
+	_planet_last_check_ms=Time.get_ticks_msec()
+	var missing:=[]
+	var layer=main.map_layer.buildings_3d
+	if layer==null or layer._camera.environment.background_mode!=Environment.BG_SKY:
+		return ["planets need the actual outdoor sky camera"]
+	var calendar: Dictionary=main.entities.shown_state().get("calendar",{})
+	var state: Dictionary=calendar.get("planet_sky",{})
+	var stars: Dictionary=calendar.get("star_sky",{})
+	if state.is_empty() or layer.planet_state!=state or not state.get("supported",false): return ["planet state is not the authoritative supported observer/date state"]
+	if state.get("utc")!=stars.get("utc") or state.get("observer",[0,0]).slice(0,2)!=stars.get("observer") or not str(state.get("source","")).begins_with("PyEphem"):
+		missing.append("planet UTC/observer/source does not match the star-sky state")
+	var pollution_range: Array=request.get("pollution",[0.0,1.0])
+	if layer.star_pollution<pollution_range[0] or layer.star_pollution>pollution_range[1]: missing.append("planet pollution %.3f outside %s"%[layer.star_pollution,pollution_range])
+	var ids:Array=request.get("visible",[])+request.get("hidden",[])
+	var material: ShaderMaterial=layer._camera.environment.sky.sky_material
+	var directions: PackedVector4Array=material.get_shader_parameter("planet_dir")
+	var coverage=material.get_shader_parameter("coverage")
+	var on_flag=material.get_shader_parameter("planet_visible")
+	var camera: Camera3D=layer._camera
+	var frames: Array=await _planet_frame()
+	var image: Image=frames[0]
+	var screen: Image=frames[1]
+	material.set_shader_parameter("planet_visible",0.0)
+	frames=await _planet_frame()
+	var without: Image=frames[0]
+	var screen_without: Image=frames[1]
+	# Forced: every requested body at its own brightness in a cloudless sky, to prove the predicted pixel is not hidden by terrain/buildings
+	var forced:=directions.duplicate()
+	for id: String in ids:
+		var i: int=Buildings3D.PlanetSky.IDS.find(id)
+		var mag:=999.0
+		for body: Dictionary in state.bodies:
+			if body.id==id and body.has("mag"): mag=float(body.mag)
+		var v:=forced[i]
+		v.w=Buildings3D.PlanetSky.brightness(mag)
+		forced[i]=v
+	material.set_shader_parameter("planet_dir",forced)
+	material.set_shader_parameter("planet_visible",1.0)
+	var old_cloud: float=main.override_cloud
+	main.override_cloud=0.0  # main re-applies the cloud cover every present: a cloudless sky for the forced render only
+	for i in 6: await get_tree().process_frame
+	frames=await _planet_frame()
+	var forced_image: Image=frames[0]
+	var forced_screen: Image=frames[1]
+	main.override_cloud=old_cloud
+	material.set_shader_parameter("planet_dir",directions)
+	material.set_shader_parameter("coverage",coverage)
+	material.set_shader_parameter("planet_visible",on_flag)
+	var rows:=[]
+	var min_contrast:=float(request.get("min_contrast",.015))
+	var hidden_reason: String=request.get("hidden_reason","")
+	var shown:=0
+	for id: String in ids:
+		var i: int=Buildings3D.PlanetSky.IDS.find(id)
+		var body:={}
+		for b: Dictionary in state.bodies:
+			if b.id==id: body=b
+		if not body.has("dir"):
+			missing.append("%s has no server position"%id)
+			continue
+		var direction:=Vector3(body.dir[0],body.dir[1],body.dir[2])
+		var point:=camera.global_position+direction*1000.0
+		var wanted_visible: bool=id in request.get("visible",[])
+		if not camera.is_position_in_frustum(point):
+			missing.append("%s is outside the sky camera"%id)
+			continue
+		var pixel:=Vector2i(camera.unproject_position(point))
+		if pixel.x<12 or pixel.y<12 or pixel.x>=image.get_width()-12 or pixel.y>=image.get_height()-12:
+			missing.append("%s projects to the screen edge %s"%[id,pixel])
+			continue
+		var measured:=_planet_patch(image,without,pixel)
+		var forced_measured:=_planet_patch(forced_image,without,pixel)
+		# The window shows the 3D view scaled and under the HUD: the planet must be visible in the screenshot itself.
+		var at_screen:=Vector2i(layer._sprite.get_global_transform_with_canvas()*(Vector2(pixel)-Vector2(layer._view.size)/2.0))
+		var on_screen:=at_screen.x>=4 and at_screen.y>=4 and at_screen.x<screen.get_width()-4 and at_screen.y<screen.get_height()-4
+		var screen_measured:=_planet_patch(screen,screen_without,at_screen) if on_screen else {"contrast":0.0}
+		var screen_forced:=_planet_patch(forced_screen,screen_without,at_screen) if on_screen else {"contrast":0.0}
+		var screen_min:=min_contrast*0.3
+		var seen: bool=measured.contrast>min_contrast
+		var colour: Vector3=measured.rgb/maxf(0.00001,maxf(measured.rgb.x,maxf(measured.rgb.y,measured.rgb.z)))
+		var expected:Color=Buildings3D.PlanetSky.COLORS[i]
+		var row:={"id":id,"direction":[direction.x,direction.y,direction.z],"magnitude":body.mag,"altitude":body.alt,"level":layer.planet_levels[i],"pixel":[pixel.x,pixel.y],
+			"contrast":measured.contrast,"forced_contrast":forced_measured.contrast,"screen":[at_screen.x,at_screen.y],"screen_contrast":screen_measured.contrast,"screen_forced_contrast":screen_forced.contrast,"visible":seen,"colour":[colour.x,colour.y,colour.z],"expected_colour":[expected.r,expected.g,expected.b]}
+		rows.append(row)
+		if wanted_visible:
+			if not seen: missing.append("%s predicted pixel %s shows no rendered contribution"%[id,pixel])
+			elif screen_measured.contrast<=screen_min: missing.append("%s is hidden in the screenshot at %s (HUD or edge)"%[id,at_screen])
+			else:
+				shown+=1
+				var off:=maxf(absf(colour.x-expected.r),maxf(absf(colour.y-expected.g),absf(colour.z-expected.b)))
+				if off>float(request.get("colour_tolerance",.2)): missing.append("%s rendered colour %s is not its naked-eye colour %s"%[id,colour,expected])
+		else:
+			if seen: missing.append("%s contributes pixels in the hidden control"%id)
+			if hidden_reason=="below_horizon":
+				if float(body.alt)>=0.0: missing.append("%s is above the horizon in the below-horizon control"%id)
+				if forced_measured.contrast>min_contrast: missing.append("%s still draws below the horizon when forced"%id)
+			elif forced_measured.contrast<=min_contrast or screen_forced.contrast<=screen_min: missing.append("%s's hidden pixel %s is obscured in view or screenshot (forced contrast %.4f, screen %.4f at %s), so the control proves nothing"%[id,pixel,forced_measured.contrast,screen_forced.contrast,at_screen])
+	if shown<request.get("visible",[]).size() or (request.get("visible",[]).is_empty() and not request.get("hidden_all",false)): missing.append("expected planets are not all rendered")
+	var layer_ok: bool=layer.planet_levels.max()>0.0
+	if request.get("visible",[]).size()>0 and not layer_ok: missing.append("planet layer is hidden in a scenario that needs it")
+	_planet_seen={"source":state.get("source"),"utc":state.get("utc"),"observer":state.get("observer"),"pollution":layer.star_pollution,"limiting_magnitude":layer.planet_limit,
+		"levels":layer.planet_levels,"rows":rows,"shown":shown,"min_contrast":min_contrast,"hidden_reason":hidden_reason,"camera_fov":camera.fov,"viewport":[image.get_width(),image.get_height()]}
+	_counts["planets"]=_planet_seen
+	return missing
+
+
 ## What the scenario needs and the scene does not show yet ([] when ready).
 func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
@@ -1395,6 +1553,7 @@ func check() -> Array:
 			missing.append("%d carts in view, the scenario needs %d" % [seen, scenario["requires"]["carts_in_view"]])
 	missing.append_array(_forest_target_readiness())
 	missing.append_array(_star_readiness())
+	missing.append_array(_planet_readiness())
 	if scenario.get("requires",{}).has("moon_phase"):
 		_moon_phase_evidence = preload("res://visual_test_moon_roofs.gd").moon(main,scenario.requires.moon_phase)
 		_counts["moon_phase"] = _moon_phase_evidence
