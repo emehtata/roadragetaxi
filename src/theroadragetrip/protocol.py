@@ -637,6 +637,8 @@ def build_state_message(
         #  "star_sky": {basis: three J2000-to-map columns, utc: ISO UTC, observer: [lat,lon], supported: bool},
         #  "planet_sky": {supported, utc, observer: [lat,lon,elevation_m], source, reason?, bodies: [{id, alt, az (grid), mag, dir: unit
         #  vector in Godot axes} | {id, unavailable}]} - Mercury..Uranus, docs/planet-sky.md,
+        #  "solar_eclipse": {active, phase: none|partial|annular|total, separation, sun_radius, moon_radius, magnitude,
+        #  obscuration, sun_alt/sun_az/moon_alt/moon_az (grid, when active)}, docs/specs/solar-eclipse-sky.md,
         #  "sun_azimuth_deg" (clockwise from the map's grid north), "darkness": 0 day
         #  .. 1 night} - the server's calendar, sun and Moon (godot-14, rrt-018-shadows).
         "calendar": calendar,

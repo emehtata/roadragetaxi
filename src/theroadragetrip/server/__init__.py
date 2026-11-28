@@ -390,6 +390,7 @@ class SimulationServer:
             historical = False  # the test's weather, not the FMI's
         self.weather_history = None
         self._test_snow_depth = getattr(args, "test_snow_depth", None)
+        self._test_eclipse = bool(getattr(args, "test_eclipse", False))
         self._test_plough = bool(getattr(args, "test_plough", False))
         if self._test_plough:
             self.world.weather.road_snow = 3.0  # fully white roads to plough
@@ -749,10 +750,16 @@ class SimulationServer:
         observer = self.world.player_pedestrian if self._on_foot else self.car
         star_lat, star_lon = meters_to_latlon(observer.x, observer.y)
         stars = star_sky_state(self.calendar.current, star_lat, star_lon) if star_lat is not None and star_lon is not None else {}
+        from ..eclipse import forced_total, solar_eclipse_state
         from ..planets import planet_sky_state
         from ..vertical import ground_height
-        planets = planet_sky_state(self.calendar.current, star_lat, star_lon, ground_height(getattr(self.world, "dem", None), observer.x, observer.y)) \
-            if star_lat is not None and star_lon is not None else {}
+        planets, eclipse = {}, {}
+        if star_lat is not None and star_lon is not None:
+            height = ground_height(getattr(self.world, "dem", None), observer.x, observer.y)
+            planets = planet_sky_state(self.calendar.current, star_lat, star_lon, height)
+            eclipse = solar_eclipse_state(self.calendar.current, star_lat, star_lon, height)
+            if getattr(self, "_test_eclipse", False):
+                eclipse = forced_total(eclipse)
         season = self.season_weights()
         arena_crowds = getattr(self.world, "arena_crowds", None)
         from ..holiday_events import holiday_events
@@ -764,7 +771,7 @@ class SimulationServer:
                 "sun_altitude_deg": round(altitude, 2), "sun_azimuth_deg": round(azimuth, 2), "darkness": round(darkness_for_sun_altitude(altitude), 3),
                 "moon_altitude_deg": round(moon_altitude, 2), "moon_azimuth_deg": round(moon_azimuth, 2),
                 "moon_illumination": round(moon_illumination, 3),
-                "star_sky": stars, "planet_sky": planets,
+                "star_sky": stars, "planet_sky": planets, "solar_eclipse": eclipse,
                 "sports_lights": sports_lights_hours(self.calendar.current),
                 "holidays": holiday_events(self.calendar.current),
                 "flags": self._flag_state(altitude),
