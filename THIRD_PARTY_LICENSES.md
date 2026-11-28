@@ -37,7 +37,7 @@ runtime and these packages, versions as in `PACKAGES.txt`:
 | idna | BSD-3-Clause | |
 | charset-normalizer | MIT | |
 | certifi | MPL-2.0 | Its CA bundle (`cacert.pem`) is unmodified; source: https://github.com/certifi/python-certifi |
-| PyEphem (`ephem`) | MIT | Self-contained astronomical calculations; no ephemeris download at runtime |
+| PyEphem (`ephem`) | MIT | Self-contained astronomical calculations (Moon, planets Mercury-Uranus); no ephemeris download at runtime |
 | rsplan | MIT | Reeds-Shepp paths for NPC vehicles' multi-point manoeuvres (manoeuvre.py) |
 | pyproj, with PROJ | MIT | PROJ's licence ships as `LICENSE_proj` |
 | shapely | BSD-3-Clause | |

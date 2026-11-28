@@ -403,7 +403,7 @@
     "urllib3": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "idna": {"licence": "BSD-3-Clause", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "charset-normalizer": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
-    "ephem": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
+    "ephem": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py); displayed fi/en/de credit for the planets (credits_planet_sky)"},
     "rsplan": {"licence": "MIT", "status": "verified", "obligations": "licence (collect_licenses.py)"},
     "certifi": {"licence": "MPL-2.0", "status": "conditional", "obligations": "licence; source of the covered file available (upstream, unmodified)"},
     "pyproj": {"licence": "MIT (with PROJ, MIT)", "status": "verified", "obligations": "licences incl. LICENSE_proj (collect_licenses.py)"},

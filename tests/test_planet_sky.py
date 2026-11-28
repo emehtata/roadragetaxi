@@ -116,6 +116,71 @@ def test_server_state_follows_the_observer(tmp_path, monkeypatch):
     assert server.calendar_state()["planet_sky"]["observer"][2] == 320.0
 
 
+def test_offline_assets_and_scenario_contract(monkeypatch):
+    import re
+    import sys
+    sys.path.insert(0, str(ROOT / "tools"))
+    import collect_licenses
+    # no kernel, timescale file or download: the provider is the bundled, already shipped PyEphem
+    source = (ROOT / "src/theroadragetrip/planets.py").read_text()
+    assert not re.search(r"^\s*(import|from)\s+(urllib|requests|skyfield|http|socket)", source, re.M)
+    assert re.search(r'^\s+"ephem"', (ROOT / "pyproject.toml").read_text(), re.M) and "ephem" in collect_licenses.RUNTIME
+    assert "skyfield" not in (ROOT / "pyproject.toml").read_text().lower() and "skyfield" not in (ROOT / "requirements.txt").read_text().lower()
+    inventory = json.loads((ROOT / "tools/license_inventory.json").read_text())
+    assert inventory["python_packages"]["ephem"]["status"] == "verified" and "credit" in inventory["python_packages"]["ephem"]["obligations"]
+
+    def blocked(*args, **kwargs):
+        raise AssertionError("network used")
+    monkeypatch.setattr(socket, "socket", blocked)
+    monkeypatch.setattr(socket, "create_connection", blocked)
+    planets._planet_sky_state.cache_clear()
+    assert planets.planet_sky_state(datetime(2026, 11, 15, 1, 0), 64.0, 26.0)["supported"]
+    assert tuple(planets.BODIES) == tuple(BODIES) and "neptune" not in source.lower().replace("neptune is excluded", "")
+    # the release smoke: the same entry point the packaged exe runs (windows-release.yml), no data files
+    assert "--planet-sky-smoke" in (ROOT / ".github/workflows/windows-release.yml").read_text()
+    import subprocess
+    out = subprocess.run([sys.executable, "-m", "theroadragetrip.server", "--planet-sky-smoke"], capture_output=True, text=True, check=True, cwd=ROOT).stdout
+    assert [b["id"] for b in json.loads(out.splitlines()[-1])["bodies"]] == BODIES
+    # the displayed credit exists in all three languages
+    i18n = (ROOT / "godot/i18n.gd").read_text()
+    assert len(re.findall(r'"credits_planet_sky": "[^"]*PyEphem[^"]*DE421[^"]*Skyfield', i18n)) == 3
+    assert "credits_planet_sky" in (ROOT / "godot/startup.gd").read_text()
+    notes = (ROOT / "docs/planet-sky.md").read_text()
+    for needed in ("10ad0a3", "PyEphem", "DE421", "MIT", "refraction", "0.1", "Mallama", "B-V"):
+        assert needed in notes, needed
+
+    # real scenarios chosen from computed ephemerides, covering all six bodies and the controls
+    import visual_test  # the harness merges `extends`, as a run does
+    registry = visual_test.scenarios()
+    found = {i: s for i, s in registry.items() if i.startswith("planets_") and "planets" in s.get("requires", {})}
+    assert {"planets_dark_rural_uranus", "planets_dark_rural_outer", "planets_twilight_inner", "planets_urban_faint", "planets_urban_bright",
+            "planets_below_horizon_control", "planets_day_control", "planets_overcast_control", "planets_time_shift", "planets_rotated_view"} <= set(found)
+    from theroadragetrip.geo import meters_to_latlon
+    covered = set()
+    for scenario_id, scenario in found.items():
+        request = scenario["requires"]["planets"]
+        assert scenario.get("weather") == "clear" and scenario["start_time"] < "2027" and scenario["start_time"] >= "2025-11"
+        lat, lon = meters_to_latlon(*scenario["pose"][:2])
+        state = planets.planet_sky_state(datetime.fromisoformat(scenario["start_time"]), lat, lon, 0)
+        bodies = {b["id"]: b for b in state["bodies"]}
+        assert state["supported"] and list(bodies) == BODIES, scenario_id
+        for name in request.get("visible", []):
+            assert bodies[name]["alt"] >= request.get("min_alt", 8.0), (scenario_id, name)
+            covered.add(name)
+        for name in request.get("below_horizon", []):
+            assert bodies[name]["alt"] < 0, (scenario_id, name)
+        assert request.get("visible") or request.get("hidden_all"), scenario_id  # an empty sky must not pass
+        assert not (set(request.get("visible", [])) & set(request.get("hidden", []))), scenario_id
+    assert covered == set(BODIES)
+    assert all(s["engine_args"] == ["--rendering-method", "forward_plus", "--rendering-driver", "vulkan"] for s in found.values())
+    outer, rotated, shifted = (registry[i] for i in ("planets_dark_rural_outer", "planets_rotated_view", "planets_time_shift"))
+    assert rotated["start_time"] == outer["start_time"] and rotated["pose"] == outer["pose"] and rotated["eye"]["yaw"] != outer["eye"]["yaw"]
+    assert shifted["pose"] == outer["pose"] and shifted["eye"] == outer["eye"] and shifted["start_time"] > outer["start_time"]
+    lat, lon = meters_to_latlon(*outer["pose"][:2])
+    mars = [next(b for b in planets.planet_sky_state(datetime.fromisoformat(t["start_time"]), lat, lon)["bodies"] if b["id"] == "mars") for t in (outer, shifted)]
+    assert abs(mars[1]["az"] - mars[0]["az"]) > 10 and mars[1]["alt"] - mars[0]["alt"] > 4, "the time shift moves Mars on the sky"
+
+
 def _channel(x: float, mu: float, low: float, high: float) -> float:
     t = (x - mu) / (low if x < mu else high)
     return math.exp(-0.5 * t * t)

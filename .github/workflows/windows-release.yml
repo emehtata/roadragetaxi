@@ -115,6 +115,9 @@ jobs:
           $cities = & build/server/RoadRageServer/RoadRageServer.exe --list-cities | Select-Object -Last 1
           Write-Host "Cities: $cities"
           if (-not ($cities | ConvertFrom-Json).Count) { throw "the bundled server lists no cities" }
+          # planet-sky: PyEphem is bundled, so the planets need no kernel, timescale file or download (docs/planet-sky.md)
+          $sky = (& build/server/RoadRageServer/RoadRageServer.exe --planet-sky-smoke | Select-Object -Last 1) | ConvertFrom-Json
+          if (-not $sky.supported -or $sky.bodies.Count -ne 6 -or ($sky.bodies | Where-Object { $_.unavailable })) { throw "the bundled server computes no planet sky" }
 
       - name: Cache Godot
         id: godot-cache
