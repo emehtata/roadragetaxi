@@ -48,7 +48,7 @@ Read the relevant skill before applying its workflow.
 ## Agent working rules
 
 ### Commits and attribution
-- Commit atomically on the working branch when a change is verified. Push when the user asks, or when the /ship finalizer runs after a tester PASS.
+- Commit atomically on the working branch when a change is verified. Push when the user asks, or when the feature-pipeline finalizer runs after a tester PASS.
 - Trailer on every commit: `Co-Authored-By: Claude Haiku 5.5 <noreply@anthropic.com>`. Do not substitute another model name.
 - Never commit a change that a tester has not passed, unless the user explicitly says so.
 

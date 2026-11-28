@@ -1,6 +1,6 @@
 ---
-name: ship
-description: Prompt -> spec -> implement -> test pipeline using the spec-writer, implementer and tester subagents. Use when the user types /ship <prompt>.
+name: feature-pipeline
+description: Prompt -> spec -> implement -> test pipeline using the spec-writer, implementer and tester subagents. Use when the user asks for a feature or fix to go through spec, implementation and testing.
 ---
 Run sequentially, passing only paths/short text between agents (not file contents):
 
