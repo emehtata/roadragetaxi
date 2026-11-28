@@ -1111,7 +1111,8 @@ func _present(state: Dictionary) -> void:
 		if map_layer.lamp_near(player_at, 25.0):
 			local_light = maxf(local_light, 1.0)
 		moon_strength = Daylight.moon_shadow(moon_strength, local_light)
-	var ambient := Daylight.moon_ambient(Daylight.ambient_color(altitude), moon_strength)
+	var obscuration := Daylight.eclipse_obscuration(state)
+	var ambient := Daylight.moon_ambient(Daylight.ambient_color(altitude), moon_strength).darkened(obscuration * (1.0 - Daylight.ECLIPSE_AMBIENT_FLOOR))
 	var lights := Daylight.artificial(altitude)
 	if not ambient.is_equal_approx(world_light.color):
 		world_light.color = ambient
@@ -1129,11 +1130,12 @@ func _present(state: Dictionary) -> void:
 			_star_pollution_at_ms = now_ms
 		map_layer.buildings_3d.set_catalog_stars(calendar.get("star_sky",{}),_star_pollution,altitude,moon_altitude,moon_illumination)
 		map_layer.buildings_3d.set_planets(calendar.get("planet_sky",{}),_star_pollution,altitude,moon_altitude,moon_illumination)
-	var sky_key := Transform2D(Vector2(altitude, sun_azimuth), Vector2(moon_altitude, moon_azimuth), Vector2(moon_illumination, 0.0))
+	var eclipse: Dictionary = calendar.get("solar_eclipse", {}) if typeof(calendar) == TYPE_DICTIONARY and obscuration > 0.0 else {}
+	var sky_key := Transform2D(Vector2(altitude, sun_azimuth), Vector2(moon_altitude, moon_azimuth), Vector2(moon_illumination, obscuration))
 	if sky_key != _sky_bodies_key:  # sun-moon-in-sky: the discs, only when a value changed
 		_sky_bodies_key = sky_key
-		map_layer.set_sky_bodies(altitude, sun_azimuth, moon_altitude, moon_azimuth, moon_illumination)
-	var sun_strength := Daylight.sunlight(altitude, cloud)
+		map_layer.set_sky_bodies(altitude, sun_azimuth, moon_altitude, moon_azimuth, moon_illumination, eclipse)
+	var sun_strength := Daylight.sunlight(altitude, cloud) * (1.0 - obscuration)
 	if sun_strength > 0.01:
 		map_layer.set_celestial_light(altitude, Daylight.azimuth(state) if is_nan(override_azimuth) else override_azimuth, sun_strength)
 	else:

@@ -1429,6 +1429,159 @@ func _measure_planet_readiness(request: Dictionary) -> Array:
 	return missing
 
 
+var _eclipse_key: Array = []
+var _eclipse_missing: Array = []
+var _eclipse_seen := {}
+var _eclipse_sampling := false
+var _eclipse_last_ms := -1000
+
+
+## docs/specs/solar-eclipse-sky.md: the server's eclipse state, the Sun light ratio and the Sun disc's real pixels,
+## measured against the same sky rendered without the eclipse.
+func _eclipse_readiness() -> Array:
+	var request: Dictionary = scenario.get("requires",{}).get("solar_eclipse",{})
+	if request.is_empty(): return []
+	var layer=main.map_layer.buildings_3d
+	if layer==null or _elapsed<10.0: return ["waiting for the eclipse sky camera and streamed context"]
+	var material: ShaderMaterial=layer._camera.environment.sky.sky_material
+	var origin: Vector3=layer._camera.global_position
+	var key: Array=[snappedf(origin.x,0.5),snappedf(origin.y,0.5),snappedf(origin.z,0.5),material.get_shader_parameter("sun_dir"),snappedf(float(material.get_shader_parameter("eclipse_obscuration")),0.01)]
+	if _measuring or (key==_eclipse_key and _eclipse_missing.is_empty() and not _eclipse_seen.is_empty()):
+		_counts["solar_eclipse"]=_eclipse_seen
+		return _eclipse_missing
+	if _eclipse_sampling: return ["sampling the eclipsed Sun against the same sky without the eclipse"]
+	if Time.get_ticks_msec()-_eclipse_last_ms<500: return ["waiting for settled eclipse inputs"]+_eclipse_missing
+	_eclipse_key=key.duplicate(true)
+	_eclipse_sampling=true
+	_sample_eclipse_readiness(request)
+	return ["sampling the eclipsed Sun against the same sky without the eclipse"]
+
+
+func _sample_eclipse_readiness(request: Dictionary) -> void:
+	_eclipse_missing=await _measure_eclipse_readiness(request)
+	_eclipse_sampling=false
+
+
+## Mean linear luminance of the pixels whose distance from `centre` is in [from, to] (pixels).
+func _eclipse_ring(image: Image, centre: Vector2, from: float, to: float) -> Dictionary:
+	var sum := 0.0
+	var count := 0
+	var lowest := 1.0
+	for x in range(int(centre.x-to)-1,int(centre.x+to)+2):
+		for y in range(int(centre.y-to)-1,int(centre.y+to)+2):
+			var d:=Vector2(x,y).distance_to(centre)
+			if d<from or d>to or x<0 or y<0 or x>=image.get_width() or y>=image.get_height(): continue
+			sum+=image.get_pixel(x,y).srgb_to_linear().get_luminance()
+			count+=1
+	return {"mean":sum/maxf(1.0,count),"count":count}
+
+
+## The share of the Sun disc's pixels that are under half their eclipse-free luminance, with the disc's mean clean luminance and the eclipse peak.
+func _eclipse_dark(image: Image, clean: Image, centre: Vector2, radius: float) -> Dictionary:
+	var disc:=0
+	var dark:=0
+	var bright:=0.0
+	var peak:=0.0
+	for x in range(int(centre.x-radius)-1,int(centre.x+radius)+2):
+		for y in range(int(centre.y-radius)-1,int(centre.y+radius)+2):
+			if Vector2(x,y).distance_to(centre)>radius or x<0 or y<0 or x>=image.get_width() or y>=image.get_height(): continue
+			var l0:=clean.get_pixel(x,y).srgb_to_linear().get_luminance()
+			var l1:=image.get_pixel(x,y).srgb_to_linear().get_luminance()
+			disc+=1
+			bright+=l0
+			dark+=1 if l1<0.5*l0 else 0
+			peak=maxf(peak,l1)
+	return {"fraction":float(dark)/maxf(1.0,disc),"disc":disc,"bright":bright/maxf(1.0,disc),"peak":peak}
+
+
+## Brightest limb pixel (outside the Sun disc) over the sky just outside the limb, both in linear luminance.
+func _eclipse_limb(image: Image, moon: Vector2, moon_radius: float, sun: Vector2, sun_radius: float) -> float:
+	var rim := 0.0
+	var sky := 0.0
+	var count := 0
+	for deg in range(0,360,2):
+		var d:=Vector2(cos(deg_to_rad(deg)),sin(deg_to_rad(deg)))
+		if (moon+d*moon_radius).distance_to(sun)<sun_radius+3.0: continue
+		for r: float in [-1.5,-0.5,0.5]:
+			var q: Vector2=moon+d*(moon_radius+r)
+			rim=maxf(rim,image.get_pixel(int(q.x),int(q.y)).srgb_to_linear().get_luminance())
+		var o:=moon+d*moon_radius*1.4
+		sky+=image.get_pixel(int(o.x),int(o.y)).srgb_to_linear().get_luminance()
+		count+=1
+	return rim/maxf(0.0001,sky/maxf(1.0,count))
+
+
+func _measure_eclipse_readiness(request: Dictionary) -> Array:
+	_eclipse_last_ms=Time.get_ticks_msec()
+	var layer=main.map_layer.buildings_3d
+	if layer==null or layer._camera.environment.background_mode!=Environment.BG_SKY:
+		return ["the eclipse needs the actual outdoor sky camera"]
+	var shown: Dictionary=main.entities.shown_state()
+	var state: Dictionary=shown.get("calendar",{}).get("solar_eclipse",{})
+	var obscuration:=float(state.get("obscuration",0.0))
+	if not state.get("active",false) or state.get("phase")!=request.phase or obscuration<float(request.get("min_obscuration",0.0)):
+		return ["server eclipse state %s is not an active %s eclipse with obscuration >= %s"%[state,request.phase,request.get("min_obscuration",0.0)]]
+	var missing:=[]
+	var material: ShaderMaterial=layer._camera.environment.sky.sky_material
+	var camera: Camera3D=layer._camera
+	var sun_dir: Vector3=material.get_shader_parameter("sun_dir")
+	var point:=camera.global_position+sun_dir*1000.0
+	if not camera.is_position_in_frustum(point): return ["the Sun is outside the sky camera"]
+	var centre:=camera.unproject_position(point)
+	var side:=sun_dir.cross(Vector3.UP).normalized()
+	var radius:=centre.distance_to(camera.unproject_position(camera.global_position+sun_dir.rotated(side,float(material.get_shader_parameter("sun_radius")))*1000.0))
+	var moon_radius:=centre.distance_to(camera.unproject_position(camera.global_position+sun_dir.rotated(side,float(material.get_shader_parameter("moon_radius")))*1000.0))
+	var at_screen: Vector2=layer._sprite.get_global_transform_with_canvas()*(centre-Vector2(layer._view.size)/2.0)
+	if at_screen.x<radius*4.0 or at_screen.y<radius*4.0 or at_screen.x>get_viewport().get_visible_rect().size.x-radius*4.0 or at_screen.y>get_viewport().get_visible_rect().size.y-radius*4.0:
+		missing.append("the Sun at %s is too near the screen edge to measure"%at_screen)
+	var image: Image=(await _planet_frame())[0]
+	var old_obscuration=material.get_shader_parameter("eclipse_obscuration")
+	var old_moon=material.get_shader_parameter("moon_visible")
+	material.set_shader_parameter("eclipse_obscuration",0.0)  # the same sky with the Sun alone
+	material.set_shader_parameter("moon_visible",0.0)
+	var clean: Image=(await _planet_frame())[0]
+	material.set_shader_parameter("eclipse_obscuration",old_obscuration)
+	material.set_shader_parameter("moon_visible",old_moon)
+	var measured: Dictionary=_eclipse_dark(image,clean,centre,radius)
+	var fraction: float=measured.fraction
+	var disc: int=measured.disc
+	var bright: float=measured.bright
+	var peak_eclipse: float=measured.peak
+	var spread:=0.0  # the Moon stays on top frame after frame: the dark share of the Sun disc is the same in the next six frames
+	var low:=fraction
+	var high:=fraction
+	for i in 6:
+		var again: float=_eclipse_dark((await _planet_frame())[0],clean,centre,radius).fraction
+		low=minf(low,again)
+		high=maxf(high,again)
+	spread=high-low
+	if spread>0.01: missing.append("the Moon flickers over the Sun: dark share varies %.3f-%.3f over 7 frames"%[low,high])
+	var range_: Array=request.get("sun_dark_fraction",[0.0,1.0])
+	if disc<100: missing.append("the Sun disc is only %d pixels wide area"%disc)
+	if bright<0.5: missing.append("the Sun disc is not bright in the eclipse-free render (mean %.3f): clouds or terrain hide it"%bright)
+	if fraction<float(range_[0]) or fraction>float(range_[1]): missing.append("dark fraction %.3f of the Sun disc is outside %s (server obscuration %.3f)"%[fraction,range_,obscuration])
+	if absf(fraction-obscuration)>0.05 and request.get("phase")!="total": missing.append("dark fraction %.3f differs from the server obscuration %.3f by more than 0.05"%[fraction,obscuration])
+	var cloud:=float(main.override_cloud) if not is_nan(main.override_cloud) else Daylight.cloud_cover(shown)
+	var altitude:=float(shown.get("calendar",{}).get("sun_altitude_deg",0.0))
+	var ratio: float=layer._sun.light_energy/maxf(0.0001,Daylight.sunlight(altitude,cloud)*Buildings3D.SUN_ENERGY)
+	if absf(ratio-(1.0-obscuration))>0.02: missing.append("Sun light ratio %.3f, expected %.3f"%[ratio,1.0-obscuration])
+	if request.has("max_light_energy") and layer._sun.light_energy>=float(request.max_light_energy): missing.append("Sun light_energy %.4f is not below %s"%[layer._sun.light_energy,request.max_light_energy])
+	var rim_gain:=0.0
+	if request.has("max_limb_rim"):  # the Moon's limb is no brighter than the sky beside it (a new Moon has no lit rim)
+		var moon_dir: Vector3=material.get_shader_parameter("moon_dir")
+		rim_gain=_eclipse_limb(image,camera.unproject_position(camera.global_position+moon_dir*1000.0),moon_radius,centre,radius)
+		if rim_gain>float(request.max_limb_rim): missing.append("the Moon's limb is %.3f times the sky beside it, the scenario allows %s"%[rim_gain,request.max_limb_rim])
+	var corona_gain:=0.0
+	if request.get("corona",false):  # the ring 1.15..1.6 Moon radii out is brighter than the sky 3..4 radii out, and below the unclipped Sun
+		corona_gain=_eclipse_ring(image,centre,moon_radius*1.15,moon_radius*1.6).mean-_eclipse_ring(image,centre,moon_radius*3.0,moon_radius*4.0).mean
+		if corona_gain<0.03: missing.append("no corona ring: gain %.3f over the sky"%corona_gain)
+		if peak_eclipse>=bright: missing.append("the totality disc (%.3f) is as bright as the Sun (%.3f)"%[peak_eclipse,bright])
+	_eclipse_seen={"phase":state.phase,"obscuration":obscuration,"magnitude":state.magnitude,"dark_fraction":fraction,"light_ratio":ratio,"light_energy":layer._sun.light_energy,
+		"corona_gain":corona_gain,"limb_rim":rim_gain,"dark_spread":spread,"sun_px":[centre.x,centre.y,radius],"moon_radius_px":moon_radius,"clean_sun_luminance":bright,"disc_pixels":disc}
+	_counts["solar_eclipse"]=_eclipse_seen
+	return missing
+
+
 ## What the scenario needs and the scene does not show yet ([] when ready).
 func check() -> Array:
 	var state: Dictionary = main.entities.shown_state()
@@ -1554,6 +1707,7 @@ func check() -> Array:
 	missing.append_array(_forest_target_readiness())
 	missing.append_array(_star_readiness())
 	missing.append_array(_planet_readiness())
+	missing.append_array(_eclipse_readiness())
 	if scenario.get("requires",{}).has("moon_phase"):
 		_moon_phase_evidence = preload("res://visual_test_moon_roofs.gd").moon(main,scenario.requires.moon_phase)
 		_counts["moon_phase"] = _moon_phase_evidence

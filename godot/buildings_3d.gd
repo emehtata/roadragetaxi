@@ -88,6 +88,7 @@ static var opaque := false  # --outdoor-3d (use_shaded): the view draws its own 
 const GROUND := Color(0.27, 0.33, 0.25)  # map_layer._draw_ground's open ground
 const SUN_ENERGY := 1.0  # --outdoor-3d light: full clear-sky sun, plus the ambient fill below
 const AMBIENT_ENERGY := 0.45
+const DISC_RADIUS_DEG := 1.0  # the sky's Sun and Moon discs (0.27 true, enlarged for readability)
 
 
 static func _make_material(flat := false) -> Material:
@@ -408,11 +409,29 @@ func set_sky_color(color: Color) -> void:
 
 ## docs/specs/sun-moon-in-sky.md: the sky's sun and moon discs at the server's alt/az (not the
 ## light's direction, which follows the moon at night).
-func set_sky_bodies(sun_alt: float, sun_az: float, moon_alt: float, moon_az: float, moon_illum: float) -> void:
+func set_sky_bodies(sun_alt: float, sun_az: float, moon_alt: float, moon_az: float, moon_illum: float, eclipse := {}) -> void:
 	if opaque:
 		var material: ShaderMaterial = _camera.environment.sky.sky_material
-		material.set_shader_parameter("sun_dir", Daylight.sun_direction(sun_alt, sun_az, -90.0))
-		material.set_shader_parameter("moon_dir", Daylight.sun_direction(moon_alt, moon_az, -90.0))
+		var sun_dir := Daylight.sun_direction(sun_alt, sun_az, -90.0)
+		var moon_dir := Daylight.sun_direction(moon_alt, moon_az, -90.0)
+		var sun_radius := deg_to_rad(DISC_RADIUS_DEG)
+		var moon_radius := sun_radius
+		var obscuration := 0.0
+		if eclipse.get("active", false):  # docs/specs/solar-eclipse-sky.md: PyEphem's Sun and Moon, the discs and their offset on one display scale
+			var display_scale := DISC_RADIUS_DEG / float(eclipse.sun_radius)
+			sun_dir = Daylight.sun_direction(eclipse.sun_alt, eclipse.sun_az, -90.0)
+			moon_dir = Daylight.sun_direction(eclipse.moon_alt, eclipse.moon_az, -90.0)
+			var axis := sun_dir.cross(moon_dir)
+			moon_dir = sun_dir.rotated(axis.normalized(), deg_to_rad(float(eclipse.separation) * display_scale)) if axis.length() > 1e-9 else sun_dir
+			moon_radius = sun_radius * float(eclipse.moon_radius) / float(eclipse.sun_radius)
+			obscuration = float(eclipse.obscuration)
+			moon_alt = 90.0  # the Moon is up whenever the Sun is
+		material.set_shader_parameter("sun_dir", sun_dir)
+		material.set_shader_parameter("moon_dir", moon_dir)
+		material.set_shader_parameter("sun_radius", sun_radius)
+		material.set_shader_parameter("moon_radius", moon_radius)
+		material.set_shader_parameter("eclipse_obscuration", obscuration)
+		material.set_shader_parameter("eclipse_energy", Daylight.ambient_color(-3.0).get_luminance())  # a civil twilight sky at totality
 		material.set_shader_parameter("moon_illumination", moon_illum)
 		material.set_shader_parameter("moon_texture", MOON_TEXTURE)
 		material.set_shader_parameter("sun_visible", 1.0 if sun_alt > -0.833 else 0.0)

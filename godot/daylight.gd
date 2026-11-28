@@ -115,6 +115,19 @@ static func moon_value(state: Dictionary, key: String, fallback: float) -> float
 	return float(value) if typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(value) else fallback
 
 
+## docs/specs/solar-eclipse-sky.md: the covered fraction of the Sun (0 without an active eclipse or on an older server).
+const ECLIPSE_AMBIENT_FLOOR := 0.02  # the ambient light left at totality (the corona's sky)
+
+
+static func eclipse_obscuration(state: Dictionary) -> float:
+	var calendar = state.get("calendar")
+	var eclipse = calendar.get("solar_eclipse") if calendar is Dictionary else null
+	if not (eclipse is Dictionary and eclipse.get("active", false)):
+		return 0.0
+	var value = eclipse.get("obscuration")
+	return clampf(float(value), 0.0, 1.0) if typeof(value) in [TYPE_INT, TYPE_FLOAT] and is_finite(value) else 0.0
+
+
 static func moon_ambient(color: Color, strength: float) -> Color:
 	# Moonlight is a neutral, nearly white light: no blue night tint.
 	return color.lerp(Color(0.6, 0.6, 0.6), clampf(strength / MOON_MAX_LIGHT, 0.0, 1.0))

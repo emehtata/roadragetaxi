@@ -9,6 +9,11 @@ uniform float coverage = 1.0;
 uniform vec2 wind_offset = vec2(0.0);
 uniform float energy = 1.0;
 // sun-moon-in-sky: Buildings3D.set_sky_bodies; discs 2 deg wide (0.53 enlarged for readability)
+// solar-eclipse-sky: the radii (radians) share one display scale; the Moon's one path covers the Sun when they overlap
+uniform float sun_radius = 0.0174533;
+uniform float moon_radius = 0.0174533;
+uniform float eclipse_obscuration = 0.0;
+uniform float eclipse_energy = 0.0;
 uniform vec3 sun_dir = vec3(0.0, 1.0, 0.0);
 uniform vec3 moon_dir = vec3(0.0, 1.0, 0.0);
 uniform vec3 moon_north = vec3(0.0, 0.0, 1.0);
@@ -26,8 +31,6 @@ uniform float star_visibility = 0.0;
 uniform vec4 planet_dir[6];
 uniform vec3 planet_color[6];
 uniform float planet_visible = 0.0;
-
-const float DISC_COS = 0.99985;  // cos(1 deg): the discs' radius
 
 const vec3 GROUND = vec3(0.2, 0.169, 0.133);
 
@@ -54,6 +57,9 @@ void sky() {
 	float y = EYEDIR.y;
 	float pixel = max(length(dFdx(EYEDIR)), length(dFdy(EYEDIR)));  // radians per pixel: a point stays one pixel wide at any FOV or resolution
 	vec3 sky = mix(sky_horizon_color, sky_top_color, smoothstep(0.0, 0.5, y));
+	float sun_cos = cos(sun_radius);
+	float moon_cos = cos(moon_radius);
+	float sky_energy = eclipse_obscuration > 0.0 ? max(energy, eclipse_energy * eclipse_obscuration) : energy;
 	if (y <= 0.0) {
 		COLOR = mix(sky_horizon_color, GROUND, smoothstep(0.0, 0.1, -y)) * energy;
 	} else {
@@ -69,13 +75,23 @@ void sky() {
 		// the discs sit behind the clouds and vanish under overcast (cloud cover 0.9: coverage 0.125)
 		float clear = (1.0 - density) * smoothstep(0.125, 0.25, coverage);
 		float s = dot(EYEDIR, sun_dir);
-		sky = sky * energy + vec3(1.0, 0.95, 0.8) * (smoothstep(DISC_COS - 0.00002, DISC_COS, s) * 2.0 + pow(max(s, 0.0), 400.0) * 0.3) * sun_visible * clear;
+		float m = dot(EYEDIR, moon_dir);
+		float moon_mask = smoothstep(moon_cos - 0.00002, moon_cos, m) * moon_visible;
+		vec3 sky_no_sun = sky * sky_energy;  // the Moon is the top layer: it shows this, never the Sun behind it
+		float sun_disc = smoothstep(sun_cos - 0.00002, sun_cos, s) * 2.0;
+		float sun_glow = pow(max(s, 0.0), 400.0) * 0.3 * (1.0 - eclipse_obscuration);  // the covered share of the glow is gone
+		sky = sky_no_sun + vec3(1.0, 0.95, 0.8) * (sun_disc + sun_glow) * sun_visible * clear;
+		if (eclipse_obscuration >= 0.9999) {  // totality: a corona fades out over two Moon radii
+			float ring = acos(clamp(m, -1.0, 1.0)) / moon_radius;
+			sky += vec3(0.9, 0.92, 1.0) * pow(clamp(2.0 - ring, 0.0, 1.0), 3.0) * (1.0 - moon_mask) * sun_visible * clear;
+		}
 		// The catalog is a visual background; it need not rebuild/illuminate the radiance cubemap.
 		if (!AT_CUBEMAP_PASS && star_visibility > 0.0) {
 			vec3 equatorial = normalize(map_to_stars * EYEDIR);
 			vec2 star_uv = vec2(atan(equatorial.y, equatorial.x) / (2.0 * PI), 0.5 - asin(clamp(equatorial.z, -1.0, 1.0)) / PI);
 			float stars = dot(texture(star_map_0, star_uv), star_weights_0) + dot(texture(star_map_1, star_uv), star_weights_1);
-			stars *= 1.0 - moon_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, dot(EYEDIR, moon_dir));
+			// layer order, back to front, in every frame: stars and planets < Sun < Moon
+			stars *= (1.0 - sun_visible * smoothstep(sun_cos - 0.00002, sun_cos, s)) * (1.0 - moon_visible * smoothstep(moon_cos - 0.00002, moon_cos, m));
 			sky += vec3(stars * star_visibility * clear * smoothstep(0.0, 0.08, y));
 		}
 		// Planets are unresolved points behind the clouds and the Sun/Moon discs, never below the horizon; no light is added to the world.
@@ -86,21 +102,21 @@ void sky() {
 				float sigma = 0.8 * pixel;
 				planets += planet_color[i] * planet_dir[i].w * exp(-0.5 * dot(off, off) / (sigma * sigma)) * step(0.0, dot(EYEDIR, planet_dir[i].xyz));
 			}
-			planets *= (1.0 - sun_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, s)) * (1.0 - moon_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, dot(EYEDIR, moon_dir)));
+			planets *= (1.0 - sun_visible * smoothstep(sun_cos - 0.00002, sun_cos, s)) * (1.0 - moon_visible * smoothstep(moon_cos - 0.00002, moon_cos, m));
 			sky += planets * clear;
 		}
-		float m = dot(EYEDIR, moon_dir);
-		if (m > DISC_COS - 0.00002 && moon_visible > 0.0) {
+		if (m > moon_cos - 0.00002 && moon_visible > 0.0) {
 			// A visible hemisphere lit from the projected Sun: only quarter phases have a straight terminator.
 			vec3 projected_sun = sun_dir - moon_dir * dot(sun_dir, moon_dir);
 			vec3 fallback = abs(moon_dir.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
 			vec3 side = length(projected_sun) > 0.00001 ? normalize(projected_sun) : normalize(cross(moon_dir, fallback));
 			vec3 up = cross(moon_dir, side);
-			vec2 p = vec2(dot(EYEDIR, side), dot(EYEDIR, up)) / sqrt(1.0 - DISC_COS * DISC_COS);
+			vec2 p = vec2(dot(EYEDIR, side), dot(EYEDIR, up)) / sin(moon_radius);
 			float z = sqrt(max(0.0, 1.0 - dot(p, p)));
 			float phase_cos = 2.0 * clamp(moon_illumination, 0.0, 1.0) - 1.0;
 			float incidence = p.x * sqrt(max(0.0, 1.0 - phase_cos * phase_cos)) + z * phase_cos;
 			float lit = smoothstep(-0.005, 0.005, incidence);
+			lit *= smoothstep(0.0005, 0.005, moon_illumination);  // a new Moon has no lit rim: at the limb z is 0 and the edge band would light up
 			vec3 map_up = moon_north - moon_dir * dot(moon_north, moon_dir);
 			if (length(map_up) < 0.00001) {
 				vec3 fallback_up = abs(moon_dir.y) < 0.999 ? vec3(0.0, 1.0, 0.0) : vec3(0.0, 0.0, 1.0);
@@ -115,9 +131,9 @@ void sky() {
 			vec2 moon_uv = vec2(longitude / (2.0 * PI) + 0.5, 0.5 - latitude / PI);
 			float albedo = texture(moon_texture, moon_uv).r;
 			// Keep the lit albedo below display clipping so maria survive Forward+ tonemapping.
-			vec3 moon = mix(sky + vec3(0.03), vec3(0.95, 0.94, 0.9) * clamp(0.25 + 1.1 * albedo, 0.25, 0.85), lit);
-			sky = mix(sky, moon, smoothstep(DISC_COS - 0.00002, DISC_COS, m) * clear);
+			vec3 moon = mix(sky_no_sun + vec3(0.03), vec3(0.95, 0.94, 0.9) * clamp(0.25 + 1.1 * albedo, 0.25, 0.85), lit);
+			sky = mix(sky, moon, moon_mask * clear);  // layer order, back to front: stars and planets < Sun < Moon
 		}
-		COLOR = mix(sky, cloud * energy, density);
+		COLOR = mix(sky, cloud * sky_energy, density);
 	}
 }
