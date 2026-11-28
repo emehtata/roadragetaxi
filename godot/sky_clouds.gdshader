@@ -22,6 +22,10 @@ uniform mat3 map_to_stars = mat3(1.0);
 uniform vec4 star_weights_0 = vec4(0.0);
 uniform vec4 star_weights_1 = vec4(0.0);
 uniform float star_visibility = 0.0;
+// planet-sky: Mercury..Uranus (PlanetSky): xyz unit direction, w display level (0 hides); one pixel-sized gaussian each
+uniform vec4 planet_dir[6];
+uniform vec3 planet_color[6];
+uniform float planet_visible = 0.0;
 
 const float DISC_COS = 0.99985;  // cos(1 deg): the discs' radius
 
@@ -48,6 +52,7 @@ float fbm(vec2 p) {
 
 void sky() {
 	float y = EYEDIR.y;
+	float pixel = max(length(dFdx(EYEDIR)), length(dFdy(EYEDIR)));  // radians per pixel: a point stays one pixel wide at any FOV or resolution
 	vec3 sky = mix(sky_horizon_color, sky_top_color, smoothstep(0.0, 0.5, y));
 	if (y <= 0.0) {
 		COLOR = mix(sky_horizon_color, GROUND, smoothstep(0.0, 0.1, -y)) * energy;
@@ -72,6 +77,17 @@ void sky() {
 			float stars = dot(texture(star_map_0, star_uv), star_weights_0) + dot(texture(star_map_1, star_uv), star_weights_1);
 			stars *= 1.0 - moon_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, dot(EYEDIR, moon_dir));
 			sky += vec3(stars * star_visibility * clear * smoothstep(0.0, 0.08, y));
+		}
+		// Planets are unresolved points behind the clouds and the Sun/Moon discs, never below the horizon; no light is added to the world.
+		if (!AT_CUBEMAP_PASS && planet_visible > 0.0) {
+			vec3 planets = vec3(0.0);
+			for (int i = 0; i < 6; i++) {
+				vec3 off = cross(EYEDIR, planet_dir[i].xyz);
+				float sigma = 0.8 * pixel;
+				planets += planet_color[i] * planet_dir[i].w * exp(-0.5 * dot(off, off) / (sigma * sigma)) * step(0.0, dot(EYEDIR, planet_dir[i].xyz));
+			}
+			planets *= (1.0 - sun_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, s)) * (1.0 - moon_visible * smoothstep(DISC_COS - 0.00002, DISC_COS, dot(EYEDIR, moon_dir)));
+			sky += planets * clear;
 		}
 		float m = dot(EYEDIR, moon_dir);
 		if (m > DISC_COS - 0.00002 && moon_visible > 0.0) {

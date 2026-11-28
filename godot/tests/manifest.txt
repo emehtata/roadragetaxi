@@ -25,6 +25,7 @@ res://tests/hud_responsive_layout.gd
 res://tests/surface_details.gd
 res://tests/forest_trees.gd
 res://tests/star_sky.gd
+res://tests/planet_sky.gd
 res://tests/precipitation_3d.gd
 res://tests/animal_audio.gd
 res://tests/rtx_trial.gd

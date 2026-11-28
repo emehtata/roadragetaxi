@@ -1128,6 +1128,7 @@ func _present(state: Dictionary) -> void:
 			_star_pollution = move_toward(_star_pollution,target,.15)
 			_star_pollution_at_ms = now_ms
 		map_layer.buildings_3d.set_catalog_stars(calendar.get("star_sky",{}),_star_pollution,altitude,moon_altitude,moon_illumination)
+		map_layer.buildings_3d.set_planets(calendar.get("planet_sky",{}),_star_pollution,altitude,moon_altitude,moon_illumination)
 	var sky_key := Transform2D(Vector2(altitude, sun_azimuth), Vector2(moon_altitude, moon_azimuth), Vector2(moon_illumination, 0.0))
 	if sky_key != _sky_bodies_key:  # sun-moon-in-sky: the discs, only when a value changed
 		_sky_bodies_key = sky_key

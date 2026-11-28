@@ -114,3 +114,41 @@ def test_server_state_follows_the_observer(tmp_path, monkeypatch):
     assert moved["observer"] != sky["observer"] and moved["bodies"] != sky["bodies"]
     server.world.dem = type("Hill", (), {"height_m": lambda self, x, y: 321.0})()  # validated terrain height reaches the provider
     assert server.calendar_state()["planet_sky"]["observer"][2] == 320.0
+
+
+def _channel(x: float, mu: float, low: float, high: float) -> float:
+    t = (x - mu) / (low if x < mu else high)
+    return math.exp(-0.5 * t * t)
+
+
+def _linear_rgb(kelvin: float) -> list:
+    """Blackbody to linear sRGB through the Wyman, Sloan and Shirley analytic CIE 1931 fit."""
+    x = y = z = 0.0
+    for nm in range(360, 831, 2):
+        weight = 1.0 / (nm ** 5 * (math.exp(1.4388e7 / (nm * kelvin)) - 1.0))
+        x += weight * (1.056 * _channel(nm, 599.8, 37.9, 31.0) + 0.362 * _channel(nm, 442.0, 16.0, 26.7) - 0.065 * _channel(nm, 501.1, 20.4, 26.2))
+        y += weight * (0.821 * _channel(nm, 568.8, 46.9, 40.5) + 0.286 * _channel(nm, 530.9, 16.3, 31.1))
+        z += weight * (1.217 * _channel(nm, 437.0, 11.8, 36.0) + 0.681 * _channel(nm, 459.0, 26.0, 13.8))
+    return [3.2406 * x - 1.5372 * y - 0.4986 * z, -0.9689 * x + 1.8758 * y + 0.0415 * z, 0.0557 * x - 0.2040 * y + 1.0570 * z]
+
+
+def test_colours_follow_published_b_minus_v():
+    """Mallama, Krobusek and Pavlov 2017 (Icarus 282, Table 3: B minus V of the reference magnitudes; the Sun is
+    B 26.10 - V 26.75 = 0.65) -> Ballesteros 2012 temperature -> blackbody chromaticity, Sun balanced to white."""
+    import re
+    published = {"mercury": (0.28, -0.69), "venus": (-3.68, -4.38), "mars": (-0.24, -1.60), "jupiter": (-8.54, -9.40), "saturn": (-7.84, -8.91), "uranus": (-6.61, -7.11)}
+    text = (ROOT / "godot/planet_sky.gd").read_text()
+    in_game_bv = [float(v) for v in re.search(r"B_MINUS_V := \[([^\]]*)\]", text)[1].split(",")]
+    colours = re.findall(r"Color\(([\d.]+), ([\d.]+), ([\d.]+)\)", re.search(r"const COLORS := \[(.*?)\]\n", text, re.S)[1])
+    assert len(colours) == 6
+    sun_bv = -26.10 - -26.75
+    temperature = lambda bv: 4600 * (1 / (0.92 * bv + 1.7) + 1 / (0.92 * bv + 0.62))
+    sun = _linear_rgb(temperature(sun_bv))
+    for (name, (b, v)), bv, rgb in zip(published.items(), in_game_bv, colours):
+        assert bv == pytest.approx(b - v, abs=0.006), name
+        balanced = [c / s for c, s in zip(_linear_rgb(temperature(bv)), sun)]
+        expected = [c / max(balanced) for c in balanced]
+        assert [float(c) for c in rgb] == pytest.approx(expected, abs=0.01), name
+    reddest = {n: float(c[2]) / float(c[0]) for n, c in zip(published, colours)}
+    assert reddest["mars"] < reddest["saturn"] < reddest["mercury"] < reddest["jupiter"] < reddest["venus"] and float(colours[5][2]) > float(colours[5][0])
+    assert all(float(c[2]) > 0.4 for c in colours), "subtle, not a saturated tint"
