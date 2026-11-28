@@ -26,6 +26,7 @@ def parse_server_args():
     parser.add_argument("--list-cities", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-city-locations", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--list-saves", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--planet-sky-smoke", action="store_true", help=argparse.SUPPRESS)  # release smoke: six bodies, offline
     parser.add_argument("--new-save-slot", action="store_true",
                         help="Start fresh in --save-slot; replace its previous contents only after a successful save")
     parser.add_argument("--save-slot", default=None,

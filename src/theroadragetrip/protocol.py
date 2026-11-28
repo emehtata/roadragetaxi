@@ -635,6 +635,8 @@ def build_state_message(
         # {"date": "YYYY-MM-DD", "time_scale": game s per real s, "sun_altitude_deg",
         #  "moon_altitude_deg", "moon_azimuth_deg", "moon_illumination",
         #  "star_sky": {basis: three J2000-to-map columns, utc: ISO UTC, observer: [lat,lon], supported: bool},
+        #  "planet_sky": {supported, utc, observer: [lat,lon,elevation_m], source, reason?, bodies: [{id, alt, az (grid), mag, dir: unit
+        #  vector in Godot axes} | {id, unavailable}]} - Mercury..Uranus, docs/planet-sky.md,
         #  "sun_azimuth_deg" (clockwise from the map's grid north), "darkness": 0 day
         #  .. 1 night} - the server's calendar, sun and Moon (godot-14, rrt-018-shadows).
         "calendar": calendar,

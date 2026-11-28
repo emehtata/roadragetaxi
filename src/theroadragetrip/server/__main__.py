@@ -25,6 +25,11 @@ def main() -> None:
     if args.list_cities:
         print(json.dumps(list(cities_from_config(config)[0])))  # ASCII (\u00e4): Godot reads it in the Windows code page
         return
+    if getattr(args, "planet_sky_smoke", False):  # the packaged PyEphem needs no kernel, timescale file or network
+        from datetime import datetime
+        from ..planets import planet_sky_state
+        print(json.dumps(planet_sky_state(datetime(2026, 11, 15, 1, 0), 64.0, 26.0)))
+        return
     if getattr(args, "list_saves", False):
         from ..config import CONFIG_PATH
         from ..save_slots import list_slots
